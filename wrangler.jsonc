@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-ai-program-status",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Chat UI: static files in ./public, served by Workers Static Assets.
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+
+  // LLM: Llama 3.3 70B on Workers AI.
+  "ai": { "binding": "AI" },
+
+  // Memory / state: one Durable Object (with its own SQLite database) per program.
+  "durable_objects": {
+    "bindings": [{ "name": "PROGRAM", "class_name": "ProgramRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProgramRoom"] }],
+
+  // Workflow / coordination: drafting the weekly report and waiting for a human to approve it.
+  "workflows": [
+    { "name": "weekly-status-report", "binding": "REPORT_WORKFLOW", "class_name": "WeeklyReportWorkflow" }
+  ],
+
+  // Set to "true" to run without Workers AI (canned, keyword-based answers). See README.
+  "vars": { "AI_MOCK": "false" },
+  "observability": { "enabled": true }
+}

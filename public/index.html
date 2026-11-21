@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Program Status Agent</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1><a href="/">Program Status Agent</a></h1>
+    <label class="you">Your name <input id="you" placeholder="e.g. Priya" maxlength="60" /></label>
+  </header>
+
+  <!-- Start screen: create a program or open a recent one -->
+  <main id="start" hidden>
+    <section class="card narrow">
+      <h2>Track a program</h2>
+      <p class="muted">Team members post status updates in chat. The agent keeps the tracker current, asks follow-up
+        questions when an update is vague, and drafts a weekly executive report that a person approves.</p>
+      <form id="create-form">
+        <input id="program-name" placeholder="Program name, e.g. EU edge capacity expansion" maxlength="120" required />
+        <button type="submit">Start tracking</button>
+      </form>
+      <h3>Recent programs</h3>
+      <ul id="recent" class="plain"></ul>
+    </section>
+  </main>
+
+  <!-- Program screen -->
+  <main id="program" class="grid" hidden>
+    <section class="card chat">
+      <h2 id="program-title"></h2>
+      <div id="messages" aria-live="polite"></div>
+      <form id="update-form">
+        <textarea id="update-text" rows="3" maxlength="2000"
+          placeholder="Your status update, e.g. &quot;Canary rollout done in 3 PoPs. EU racks slip to 2026-12-12 because of a vendor delay.&quot;"></textarea>
+        <button type="submit" id="send">Send update</button>
+      </form>
+    </section>
+
+    <section class="side">
+      <div class="card">
+        <h3>Health <span id="rag" class="rag"></span></h3>
+        <ul id="reasons" class="plain small"></ul>
+        <div id="stale-box" hidden>
+          <h4>Needs an update</h4>
+          <ul id="stale" class="plain small"></ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Milestones</h3>
+        <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due</th><th>Status</th></tr></thead>
+          <tbody id="milestones"></tbody></table>
+        <h3>Risks</h3>
+        <ul id="risks" class="plain small"></ul>
+        <h3>Dependencies</h3>
+        <ul id="dependencies" class="plain small"></ul>
+      </div>
+
+      <div class="card">
+        <h3>Weekly report</h3>
+        <div class="row">
+          <button id="draft-report">Draft report now</button>
+          <label class="small"><input type="checkbox" id="schedule" /> Every Monday 9 AM</label>
+        </div>
+        <p id="schedule-note" class="muted small"></p>
+        <div id="report"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

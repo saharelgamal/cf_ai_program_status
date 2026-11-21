@@ -1,0 +1,20 @@
+// Offline config: the same app with no Workers AI binding and AI_MOCK=true,
+// so it runs on any laptop with `npm run dev:offline` and no Cloudflare account.
+// The LLM is replaced by simple keyword rules (see mockTurn in src/llm.ts).
+// Use wrangler.jsonc (npm run dev / npm run deploy) for the real app.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-ai-program-status",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "durable_objects": {
+    "bindings": [{ "name": "PROGRAM", "class_name": "ProgramRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProgramRoom"] }],
+  "workflows": [
+    { "name": "weekly-status-report", "binding": "REPORT_WORKFLOW", "class_name": "WeeklyReportWorkflow" }
+  ],
+  "vars": { "AI_MOCK": "true" }
+}
