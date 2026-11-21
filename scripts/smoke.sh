@@ -38,6 +38,11 @@ echo "plan: $(echo "$STATE" | jq -r .health.plan.summary)"
 post "/api/programs/$ID/updates" '{"author":"Priya","text":"Power cabling: due 2026-12-05."}' >/dev/null
 STATE=$(get "/api/programs/$ID")
 [ "$(echo "$STATE" | jq -r '.milestones[] | select(.name == "Power cabling") | .component')" = "DC ops" ] || { echo "expected the poster's team"; exit 1; }
+# Everyday dates, and a short answer to the agent's question.
+post "/api/programs/$ID/updates" '{"author":"Sahar","text":"Delay on the backbone deployment"}' | jq -r '.messages[-1].content'
+post "/api/programs/$ID/updates" '{"author":"Sahar","text":"mid december"}' | jq -r '.messages[-1].content'
+BACKBONE=$(get "/api/programs/$ID" | jq -r '.milestones[] | select(.name == "Backbone deployment") | .due')
+[[ "$BACKBONE" =~ ^20[0-9]{2}-12-15$ ]] || { echo "expected the backbone due mid December, got $BACKBONE"; exit 1; }
 echo "people: $(echo "$STATE" | jq -c '[.people[] | {name, teams, assignments}]')"
 [ "$(echo "$STATE" | jq -r '.people[] | select(.name == "Priya") | .assignments | join(", ")')" = "EU racks, Power cabling" ] || { echo "wrong assignments"; exit 1; }
 

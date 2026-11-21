@@ -33,6 +33,10 @@ After the first version was on GitHub, I tried it and asked for changes:
 
 > I want the name and the team and what everyone is assigned to to be automatically populated in the status update table next to it
 
+> this is what shows - it doesn't understand mid december
+
+(With a screenshot of offline mode asking for the due date again after "mid december".)
+
 ## 2. Task brief given to the coding assistant
 
 From the job posting's optional assignment:

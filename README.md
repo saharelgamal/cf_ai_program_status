@@ -114,6 +114,10 @@ npm run dev           # the real app; Workers AI runs remotely, so this needs `n
 
 Open http://localhost:8787.
 
+Offline mode is a stand-in so the app can run without an AI model. It reads one update per sentence, a
+"Team - Milestone" prefix, everyday dates ("mid December", "Dec 3", "next Friday") and a short answer to its own
+last question. Its replies start with "[offline mode]". The real model on Workers AI understands far more.
+
 ## Tests
 
 ```bash

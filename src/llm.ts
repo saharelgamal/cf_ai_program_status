@@ -103,7 +103,10 @@ ${stateForPrompt(p)}
 How to work:
 1. Extract only what the latest message says about milestones, risks and dependencies.
    To update an existing item, reuse its id in brackets. Never invent owners, dates or numbers.
-   Dates are YYYY-MM-DD; turn "next Friday" into a date using today's date.
+   Dates are YYYY-MM-DD. Turn everyday dates into one using today's date: "next Friday", "Dec 3",
+   "early December" (the 7th), "mid December" (the 15th), "late December" (the 25th), "end of December" (the 31st).
+   A month that has already passed this year means next year.
+   If the message is a short answer to your last question (for example just "mid December"), apply it to the item you asked about.
    If the writer says "I" or "my team" owns something, the owner is "${speaker}".
 2. Every milestone belongs to a component: the team or workstream doing it (for example "Network",
    "DC ops", "Hardware", "Software"). Reuse a component name already in the tracker when it fits. If the update
@@ -188,7 +191,8 @@ export async function runTurn(
     // History lines look like "Priya: <update>"; the mock wants just the update.
     const last = history[history.length - 1]?.content ?? "";
     const team = teamOf(roster(program), speaker);
-    return mockTurn(last.startsWith(`${speaker}: `) ? last.slice(speaker.length + 2) : last, speaker, today, team);
+    const lastQuestion = history.at(-2)?.role === "assistant" ? history.at(-2)!.content : "";
+    return mockTurn(last.startsWith(`${speaker}: `) ? last.slice(speaker.length + 2) : last, speaker, today, team, lastQuestion);
   }
 
   const messages = [{ role: "system", content: turnSystemPrompt(program, speaker, today) }, ...history];
@@ -350,13 +354,111 @@ export async function writeReport(
 
 const DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 const ORIGINAL_RE = /\b(?:originally|was|from)\s+(\d{4}-\d{2}-\d{2})/i;
-/** "Network - Backbone upgrade" → component "Network", rest "Backbone upgrade". */
-const COMPONENT_RE = /^([A-Za-z][\w &/]{0,40}?)\s+[-–]\s+(.+)$/s;
+/** "Network - Backbone upgrade" → component "Network", rest "Backbone upgrade". Up to three words. */
+const COMPONENT_RE = /^([A-Za-z][\w&/]*(?:\s[\w&/]+){0,2})\s+[-–]\s+(.+)$/s;
 
-export function mockTurn(text: string, speaker: string, _today: string, speakerTeam = ""): TurnResult {
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH = String.raw`(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?`;
+const PART = String.raw`(beginning of|start of|early|mid|middle of|late|end of)`;
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/** A month's date with the year filled in: this year, or next year if that date has passed. */
+function monthDate(month: string, day: number | "last", year: string | undefined, today: string): string {
+  const m = MONTHS.indexOf(month.slice(0, 3).toLowerCase());
+  const build = (y: number) => {
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    return iso(new Date(Date.UTC(y, m, day === "last" ? lastDay : Math.min(day, lastDay))));
+  };
+  if (year) return build(Number(year));
+  const thisYear = Number(today.slice(0, 4));
+  const date = build(thisYear);
+  return date < today ? build(thisYear + 1) : date;
+}
+
+const PART_DAY: Record<string, number | "last"> = {
+  "beginning of": 1, "start of": 1, early: 7, mid: 15, "middle of": 15, late: 25, "end of": "last",
+};
+
+/**
+ * Offline mode only: turns everyday dates into YYYY-MM-DD, using today's date for the year.
+ * "mid dec" → 2026-12-15, "end of January" → 2027-01-31, "Dec 3rd" → 2026-12-03, "next Friday", "end of the month".
+ * (The real model does this itself; the system prompt tells it how.)
+ */
+export function normalizeDates(text: string, today: string): string {
+  const now = new Date(`${today}T00:00:00Z`);
+  return text
+    .replace(new RegExp(String.raw`\b(?:${PART}\s+(?:the\s+month\s+of\s+)?)?${MONTH}\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?`, "gi"),
+      (_all, _part, month, day, year) => monthDate(month, Number(day), year, today))
+    .replace(new RegExp(String.raw`\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?${MONTH}\b(?:,?\s+(\d{4}))?`, "gi"),
+      (_all, day, month, year) => monthDate(month, Number(day), year, today))
+    .replace(new RegExp(String.raw`\b${PART}\s+(?:the\s+month\s+of\s+)?${MONTH}\b(?:,?\s+(\d{4}))?`, "gi"),
+      (_all, part, month, year) => monthDate(month, PART_DAY[part.toLowerCase()], year, today))
+    // A bare month ("in December"), but never the word "may" on its own ("it may slip").
+    .replace(new RegExp(String.raw`\b(?:in|by|until|for)\s+(?!may\b)${MONTH}\b(?:,?\s+(\d{4}))?`, "gi"),
+      (all, month, year) => all.replace(/\s\S+(?:,?\s+\d{4})?$/, ` ${monthDate(month, "last", year, today)}`))
+    .replace(/\b(?:end of|by the end of)\s+(?:the|this)\s+month\b/gi, () => iso(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))))
+    // "this Friday" and "next Friday" both mean the coming Friday here; the real model reads the nuance.
+    .replace(/\b(?:next|this|on)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, (_all, day) => {
+      const ahead = (WEEKDAYS.indexOf(day.toLowerCase()) - now.getUTCDay() + 7) % 7 || 7;
+      return iso(new Date(now.getTime() + ahead * 86_400_000));
+    })
+    .replace(/\bnext week\b/gi, () => iso(new Date(now.getTime() + 7 * 86_400_000)))
+    .replace(/\btomorrow\b/gi, () => iso(new Date(now.getTime() + 86_400_000)));
+}
+
+/** "Delay on the backbone deployment" → "Backbone deployment". */
+function milestoneName(sentence: string): string {
+  let head = sentence.split(/:|\s[-–]\s|,/)[0].trim();
+  head = head.replace(/^(?:a\s+|the\s+)?(?:delays?|slip(?:page)?|update|progress|news)\s+(?:on|to|for|in|with)\s+(?:the\s+)?/i, "");
+  head = head.replace(/^(?:the|our)\s+/i, "");
+  const words = head.split(/\s+/);
+  head = (words.length > 5 ? words.slice(0, 4) : words).join(" ").replace(/[.;!?]$/, "");
+  return head.charAt(0).toUpperCase() + head.slice(1);
+}
+
+const ASKED_DATE = /What's the due date for "([^"]+)"\?/;
+const ASKED_TEAM = /Which team or component is "([^"]+)" part of\?/;
+
+/** Offline mode: a short message right after the agent asked something is the answer to that question. */
+function answerToQuestion(text: string, lastQuestion: string): TurnResult | null {
+  const words = text.trim().split(/\s+/);
+  if (words.length > 8 || /[:]|\s[-–]\s/.test(text)) return null;
+  const date = text.match(DATE_RE)?.[0];
+  const askedDate = lastQuestion.match(ASKED_DATE)?.[1];
+  if (askedDate && date) {
+    return {
+      reply: `[offline mode] Recorded: "${askedDate}" is due ${date}. Thanks.`,
+      milestones: [{ name: askedDate, due: date }], risks: [], dependencies: [],
+    };
+  }
+  const askedTeam = lastQuestion.match(ASKED_TEAM)?.[1];
+  if (askedTeam && !date && words.length <= 4) {
+    const team = text.trim().replace(/^(?:it's|it is|part of|the)\s+/i, "").replace(/\s+team$/i, "").replace(/[.!]$/, "");
+    const component = team.charAt(0).toUpperCase() + team.slice(1);
+    return {
+      reply: `[offline mode] Recorded: "${askedTeam}" is part of ${component}. Thanks.`,
+      milestones: [{ name: askedTeam, component }], risks: [], dependencies: [],
+    };
+  }
+  return null;
+}
+
+/**
+ * The offline stand-in for the LLM: simple keyword rules, for local runs and tests.
+ * It understands one update per sentence, "Team - Milestone: ..." prefixes, everyday dates,
+ * and short answers to its own last question.
+ */
+export function mockTurn(text: string, speaker: string, today: string, speakerTeam = "", lastQuestion = ""): TurnResult {
+  text = normalizeDates(text, today);
+  const answer = answerToQuestion(text, lastQuestion);
+  if (answer) return answer;
+
   const result: TurnResult = { reply: "", milestones: [], risks: [], dependencies: [] };
   const sentences = text.split(/(?<=[.;!?\n])\s*/).map((s) => s.trim()).filter(Boolean);
   const questions: string[] = [];
+  const recorded: string[] = [];
 
   for (const raw of sentences) {
     const prefixed = raw.match(COMPONENT_RE);
@@ -365,19 +467,21 @@ export function mockTurn(text: string, speaker: string, _today: string, speakerT
     const originalDue = s.match(ORIGINAL_RE)?.[1];
     const due = [...s.matchAll(DATE_RE)].map((d) => d[0]).filter((d) => d !== originalDue).at(-1);
     if (/\brisk\b/i.test(s)) {
+      const severity = /\b(high|critical|blocker)\b/i.test(s) ? "high" : /\blow\b/i.test(s) ? "low" : "medium";
       result.risks.push({
         description: s.replace(/^(new\s+)?risk:\s*/i, ""),
         component,
-        severity: /\b(high|critical|blocker)\b/i.test(s) ? "high" : /\blow\b/i.test(s) ? "low" : "medium",
+        severity,
         owner: speaker,
         mitigation: /\bmitigat/i.test(s) ? s : undefined,
       });
+      recorded.push(`a ${severity} risk`);
       if (!/\bmitigat/i.test(s)) questions.push("What's the mitigation for that risk?");
     } else if (/\b(depend|waiting on|blocked on)\b/i.test(s)) {
       result.dependencies.push({ description: s, neededBy: due });
+      recorded.push(due ? `a dependency needed by ${due}` : "a dependency");
       if (!due) questions.push("When do you need that dependency by?");
     } else {
-      const head = s.includes(":") ? s.split(":")[0] : s.split(/\s+/).slice(0, 4).join(" ");
       const status: MilestoneStatus = /\b(done|complete[d]?|shipped|finished)\b/i.test(s)
         ? "done"
         : /\b(blocked|off track|will miss|miss(ed|ing) the date)/i.test(s)
@@ -385,16 +489,17 @@ export function mockTurn(text: string, speaker: string, _today: string, speakerT
           : /\b(slip|delay|late|behind|at risk)/i.test(s)
             ? "at_risk"
             : "on_track";
-      const name = head.replace(/[.;!?]$/, "");
-      result.milestones.push({ name, component, owner: speaker, due, originalDue, status, note: s });
+      const name = milestoneName(s);
+      result.milestones.push({ name, component, owner: speaker, due, originalDue, status, note: raw });
+      recorded.push(`"${name}" (${status.replace("_", " ")}${due ? `, due ${due}` : ""})`);
       if (status !== "done" && !due) questions.push(`What's the due date for "${name}"?`);
       if (!component && !speakerTeam) questions.push(`Which team or component is "${name}" part of?`);
     }
   }
 
-  const recorded = result.milestones.length + result.risks.length + result.dependencies.length;
   result.reply =
-    `[mock] Recorded ${recorded} item(s).` + (questions.length ? ` ${questions.slice(0, 2).join(" ")}` : " Thanks, that's clear.");
+    (recorded.length ? `[offline mode] Recorded ${recorded.join(", ")}.` : "[offline mode] I didn't find an update in that.") +
+    (questions.length ? ` ${questions.slice(0, 2).join(" ")}` : " Thanks, that's clear.");
   return result;
 }
 
@@ -403,8 +508,8 @@ export function mockReport(p: ProgramSnapshot, health: Health): string {
   for (const c of health.components) {
     lines.push(
       c.milestones
-        ? `${c.name} (${c.rag}): [mock] ${c.done} of ${c.milestones} milestones done, ${c.slipped} slipped against plan.`
-        : `${c.name} (${c.rag}): [mock] no milestones yet. ${c.reasons.join("; ")}.`,
+        ? `${c.name} (${c.rag}): [offline mode] ${c.done} of ${c.milestones} milestones done, ${c.slipped} slipped against plan.`
+        : `${c.name} (${c.rag}): [offline mode] no milestones yet. ${c.reasons.join("; ").replace(/\.$/, "")}.`,
     );
     for (const m of p.milestones.filter((m) => (m.component || GENERAL) === c.name)) {
       lines.push(`- ${m.name}: ${m.status.replace("_", " ")}, due ${dueVsPlan(m.due, m.baselineDue)}, ${m.owner || "no owner"}`);
