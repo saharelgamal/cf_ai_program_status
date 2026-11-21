@@ -37,7 +37,7 @@
         </label>
         <div class="send-row">
           <textarea id="update-text" rows="3" maxlength="2000"
-            placeholder="Your status update, e.g. &quot;Canary rollout done in 3 PoPs. EU racks slip to 2026-12-12 because of a vendor delay.&quot;"></textarea>
+            placeholder="Your status update, e.g. &quot;DC ops - FRA rack install slips to 2026-12-12, originally 2026-12-01, because of a vendor delay.&quot;"></textarea>
           <button type="submit" id="send">Send update</button>
         </div>
       </form>
@@ -47,6 +47,10 @@
       <div class="card">
         <h3>Health <span id="rag" class="rag"></span></h3>
         <ul id="reasons" class="plain small"></ul>
+        <h4>By component</h4>
+        <ul id="components" class="plain small"></ul>
+        <h4>Against the original plan</h4>
+        <p id="plan" class="small"></p>
         <div id="stale-box" hidden>
           <h4>Needs an update</h4>
           <ul id="stale" class="plain small"></ul>
@@ -55,7 +59,7 @@
 
       <div class="card">
         <h3>Milestones</h3>
-        <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due</th><th>Status</th><th>Last update</th></tr></thead>
+        <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due (vs plan)</th><th>Status</th><th>Last update</th></tr></thead>
           <tbody id="milestones"></tbody></table>
         <h3>Risks</h3>
         <ul id="risks" class="plain small"></ul>

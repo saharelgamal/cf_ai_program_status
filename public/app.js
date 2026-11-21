@@ -126,27 +126,66 @@ function renderHealth(health) {
   rag.textContent = health.overall;
   rag.className = `rag ${health.overall}`;
   $("reasons").replaceChildren(...health.reasons.map((r) => el("li", r)));
+  $("components").replaceChildren(
+    ...(health.components.length
+      ? health.components.map((c) => {
+          const li = el("li");
+          li.append(el("span", c.rag, `pill ${c.rag}`), document.createTextNode(` ${c.name}`));
+          const facts = [c.milestones ? `${c.done} of ${c.milestones} done` : "risks only, no milestones yet"];
+          if (c.slipped) facts.push(`${c.slipped} slipped against plan`);
+          li.append(el("span", ` · ${facts.join(" · ")}`, "muted"));
+          return li;
+        })
+      : [el("li", "None yet.", "muted")]),
+  );
+  $("plan").textContent = health.plan.summary;
   $("stale-box").hidden = !health.stale.length;
   $("stale").replaceChildren(...health.stale.map((s) => el("li", s)));
 }
 
+const GENERAL = "General";
+
+/** Whole days from the original date to the current one (positive = late). */
+function daysLate(planned, current) {
+  return Math.round((Date.parse(current) - Date.parse(planned)) / 86400000);
+}
+
+function dueCell(m) {
+  const td = el("td", m.due || "—");
+  if (m.due && m.baselineDue && m.baselineDue !== m.due) {
+    const days = daysLate(m.baselineDue, m.due);
+    td.append(el("div", `planned ${m.baselineDue} (${days > 0 ? "+" : ""}${days}d)`, days > 0 ? "small slip" : "small muted"));
+  }
+  return td;
+}
+
 function renderTracker(state) {
-  const rows = state.milestones.map((m) => {
-    const tr = el("tr");
-    tr.title = m.note || "";
-    tr.append(el("td", m.name), el("td", m.owner || "—"), el("td", m.due || "—"));
-    const td = el("td");
-    td.append(el("span", m.status.replace("_", " "), `pill ${m.status}`));
-    tr.append(td, el("td", lastUpdate(m), "muted"));
-    return tr;
-  });
+  // Milestones grouped by component, each group headed by that component's own health colour.
+  const rows = [];
+  for (const c of state.health.components.filter((c) => c.milestones)) {
+    const head = el("tr", null, "group");
+    const th = el("td");
+    th.colSpan = 5;
+    th.append(el("strong", c.name), document.createTextNode(" "), el("span", c.rag, `pill ${c.rag}`));
+    head.append(th);
+    rows.push(head);
+    for (const m of state.milestones.filter((m) => (m.component || GENERAL) === c.name)) {
+      const tr = el("tr");
+      tr.title = m.note || "";
+      tr.append(el("td", m.name), el("td", m.owner || "—"), dueCell(m));
+      const td = el("td");
+      td.append(el("span", m.status.replace("_", " "), `pill ${m.status}`));
+      tr.append(td, el("td", lastUpdate(m), "muted"));
+      rows.push(tr);
+    }
+  }
   $("milestones").replaceChildren(...(rows.length ? rows : [emptyRow(5)]));
 
   $("risks").replaceChildren(
     ...(state.risks.length
       ? state.risks.map((r) => {
           const li = el("li");
-          li.append(el("span", r.severity, `pill ${r.severity}`), document.createTextNode(` ${r.description}`));
+          li.append(el("span", r.severity, `pill ${r.severity}`), document.createTextNode(` ${r.component ? `${r.component}: ` : ""}${r.description}`));
           li.append(el("div", `Owner: ${r.owner || "—"} · Mitigation: ${r.mitigation || "none yet"} · ${r.status} · Last update: ${lastUpdate(r)}`, "muted"));
           return li;
         })

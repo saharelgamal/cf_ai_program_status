@@ -5,7 +5,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { computeHealth, nextMondayMorning, type Dependency, type Health, type Milestone, type ProgramSnapshot, type Risk } from "./status";
-import { idFor, runTurn, type ChatMessage, type TurnResult } from "./llm";
+import { idFor, runTurn, type ChatMessage, type MilestoneChange, type TurnResult } from "./llm";
 
 export type ReportStatus = "drafting" | "awaiting_approval" | "approved" | "changes_requested" | "expired" | "failed";
 
@@ -91,12 +91,22 @@ export class ProgramRoom extends DurableObject<Env> {
       .map((r) => JSON.parse(r.data) as T);
   }
 
-  /** Insert or update one tracker item. Fields the update leaves out keep their old value. */
-  private upsert<T extends { id: string }>(kind: ItemKind, id: string, defaults: T, change: Partial<T>, by: string): void {
+  /**
+   * Insert or update one tracker item. Fields the update leaves out keep their old value.
+   * `finish` can adjust the merged item before it is saved (used for the original plan date).
+   */
+  private upsert<T extends { id: string }>(
+    kind: ItemKind,
+    id: string,
+    defaults: T,
+    change: Partial<T>,
+    by: string,
+    finish: (next: T) => T = (next) => next,
+  ): void {
     const row = this.sql.exec<{ data: string }>("SELECT data FROM items WHERE kind = ? AND id = ?", kind, id).toArray()[0];
-    const current: T = row ? JSON.parse(row.data) : defaults;
+    const current: T = row ? { ...defaults, ...JSON.parse(row.data) } : defaults;
     const defined = Object.fromEntries(Object.entries(change).filter(([, v]) => v !== undefined)) as Partial<T>;
-    const next = { ...current, ...defined, id, updatedAt: new Date().toISOString(), updatedBy: by };
+    const next = finish({ ...current, ...defined, id, updatedAt: new Date().toISOString(), updatedBy: by });
     this.sql.exec(
       "INSERT INTO items (kind, id, data) VALUES (?, ?, ?) ON CONFLICT(kind, id) DO UPDATE SET data = excluded.data",
       kind,
@@ -106,11 +116,18 @@ export class ProgramRoom extends DurableObject<Env> {
   }
 
   private applyTurn(turn: TurnResult, by: string): void {
-    for (const m of turn.milestones) {
-      this.upsert<Milestone>("milestone", idFor(m), { id: "", name: m.name, owner: "", due: "", status: "on_track", note: "", updatedAt: "" }, m, by);
+    for (const { originalDue, baselineDue: _ignored, ...m } of turn.milestones as Array<MilestoneChange & { baselineDue?: string }>) {
+      const defaults: Milestone = {
+        id: "", name: m.name, component: "", owner: "", due: "", baselineDue: "", status: "on_track", note: "", updatedAt: "",
+      };
+      // The original plan date is set once: from the date the writer calls the original one,
+      // otherwise from the first due date the milestone gets. Later updates move `due`, never the baseline.
+      this.upsert<Milestone>("milestone", idFor(m), defaults, m, by, (next) =>
+        next.baselineDue ? next : { ...next, baselineDue: originalDue || next.due || "" },
+      );
     }
     for (const r of turn.risks) {
-      this.upsert<Risk>("risk", idFor(r), { id: "", description: r.description, severity: "medium", owner: "", mitigation: "", status: "open", updatedAt: "" }, r, by);
+      this.upsert<Risk>("risk", idFor(r), { id: "", description: r.description, component: "", severity: "medium", owner: "", mitigation: "", status: "open", updatedAt: "" }, r, by);
     }
     for (const d of turn.dependencies) {
       this.upsert<Dependency>("dependency", idFor(d), { id: "", description: d.description, team: "", neededBy: "", status: "open", updatedAt: "" }, d, by);

@@ -49,4 +49,32 @@ describe("mockTurn (offline mode)", () => {
     expect(t.dependencies).toHaveLength(1);
     expect(t.reply).toContain("due date");
   });
+
+  it("reads the component and the original date", () => {
+    const t = mockTurn(
+      "DC ops - FRA rack install: slipping to 2027-01-20, originally 2026-12-15, because of a vendor delay. Hardware - New risk: optics shortage, high, mitigated by a second supplier.",
+      "Marco",
+      "2026-11-21",
+    );
+    expect(t.milestones[0]).toMatchObject({
+      name: "FRA rack install",
+      component: "DC ops",
+      due: "2027-01-20",
+      originalDue: "2026-12-15",
+      status: "at_risk",
+    });
+    expect(t.risks[0]).toMatchObject({ component: "Hardware", severity: "high" });
+  });
+});
+
+describe("sanitizeTurn: components and original dates", () => {
+  it("keeps a component and a valid original date", () => {
+    const t = sanitizeTurn({
+      reply: "ok",
+      milestones: [{ name: "Backbone", component: "Network", due: "2026-12-20", originalDue: "Dec 1" }],
+      risks: [{ description: "Optics", component: "Hardware" }],
+    });
+    expect(t.milestones[0]).toMatchObject({ component: "Network", due: "2026-12-20", originalDue: undefined });
+    expect(t.risks[0].component).toBe("Hardware");
+  });
 });

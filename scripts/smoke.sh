@@ -10,8 +10,10 @@ get()  { curl -sf "$BASE$1"; }
 ID=$(post /api/programs '{"name":"EU edge capacity expansion"}' | jq -r .id)
 echo "program: $ID"
 
-post "/api/programs/$ID/updates" '{"author":"Priya","text":"Canary rollout: done in 3 PoPs. EU racks: delayed by vendor, new date 2026-12-12."}' >/dev/null
-post "/api/programs/$ID/updates" '{"author":"Marco","text":"Risk: high chance the optics shortage blocks Q1 turn-ups. Waiting on DC ops for power in FRA, needed by 2026-12-01."}' \
+post "/api/programs/$ID/updates" '{"author":"Priya","text":"Network - Canary rollout: done in 3 PoPs. DC ops - EU racks: due 2026-12-01."}' >/dev/null
+# The second update moves the EU racks date; the original plan date must stay 2026-12-01.
+post "/api/programs/$ID/updates" '{"author":"Priya","text":"DC ops - EU racks: delayed by vendor, new date 2026-12-12."}' >/dev/null
+post "/api/programs/$ID/updates" '{"author":"Marco","text":"Hardware - Risk: high chance the optics shortage blocks Q1 turn-ups. Waiting on DC ops for power in FRA, needed by 2026-12-01."}' \
   | jq -r '.messages[-1].content'
 
 # Updates need a name, so every change records who made it.
@@ -24,6 +26,14 @@ echo "risk last updated by: $(echo "$STATE" | jq -r '.risks[0].updatedBy')"
 echo "health: $(echo "$STATE" | jq -r .health.overall)  milestones: $(echo "$STATE" | jq '.milestones|length')  risks: $(echo "$STATE" | jq '.risks|length')  deps: $(echo "$STATE" | jq '.dependencies|length')"
 [ "$(echo "$STATE" | jq -r .health.overall)" = "RED" ] || { echo "expected RED (open high risk)"; exit 1; }
 
+# Each milestone keeps its component and original date; the health has a colour per component and a plan summary.
+RACKS=$(echo "$STATE" | jq -c '.milestones[] | select(.name == "EU racks") | {component, due, baselineDue, status}')
+echo "EU racks: $RACKS"
+[ "$RACKS" = '{"component":"DC ops","due":"2026-12-12","baselineDue":"2026-12-01","status":"at_risk"}' ] || { echo "wrong component or plan date"; exit 1; }
+echo "components: $(echo "$STATE" | jq -c '[.health.components[] | {(.name): .rag}] | add')"
+echo "plan: $(echo "$STATE" | jq -r .health.plan.summary)"
+[ "$(echo "$STATE" | jq -r '.health.plan.slips[0].days')" = "11" ] || { echo "expected an 11-day slip"; exit 1; }
+
 REPORT=$(post "/api/programs/$ID/reports" '{}' | jq -r .id)
 echo "report workflow: $REPORT"
 for i in $(seq 1 30); do
@@ -33,6 +43,9 @@ for i in $(seq 1 30); do
 done
 echo "report status: $STATUS"
 [ "$STATUS" = "awaiting_approval" ] || exit 1
+DRAFT=$(get "/api/programs/$ID" | jq -r '.reports[0].draft')
+[[ "$DRAFT" == *"Status by component"* && "$DRAFT" == *"Overall against the original plan"* ]] || { echo "draft is missing a section"; echo "$DRAFT"; exit 1; }
+echo "--- draft ---"; echo "$DRAFT"; echo "-------------"
 
 # A second request while one is in flight returns the same report, not a new one.
 [ "$(post "/api/programs/$ID/reports" '{}' | jq -r .id)" = "$REPORT" ] || { echo "duplicate report started"; exit 1; }

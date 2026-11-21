@@ -8,7 +8,7 @@ const old = "2026-11-01T12:00:00Z";
 function program(over: Partial<ProgramSnapshot> = {}): ProgramSnapshot {
   return { name: "Test", milestones: [], risks: [], dependencies: [], ...over };
 }
-const ms = (o: object) => ({ id: "m", name: "Rollout", owner: "Priya", due: "2026-12-12", status: "on_track", note: "", updatedAt: fresh, ...o }) as never;
+const ms = (o: object) => ({ id: "m", name: "Rollout", component: "Network", owner: "Priya", due: "2026-12-12", baselineDue: "2026-12-12", status: "on_track", note: "", updatedAt: fresh, ...o }) as never;
 const risk = (o: object) => ({ id: "r", description: "Vendor delay", severity: "medium", owner: "", mitigation: "", status: "open", updatedAt: fresh, ...o }) as never;
 const dep = (o: object) => ({ id: "d", description: "Racks from DC ops", team: "DC ops", neededBy: "2026-12-01", status: "open", updatedAt: fresh, ...o }) as never;
 
@@ -52,6 +52,53 @@ describe("computeHealth", () => {
   it("lists open items with no update for a week as stale", () => {
     const h = computeHealth(program({ milestones: [ms({ updatedAt: old })], risks: [risk({ updatedAt: old, mitigation: "x" })] }), NOW);
     expect(h.stale).toHaveLength(2);
+  });
+});
+
+describe("by component and against the original plan", () => {
+  it("scores each component with the same rules", () => {
+    const h = computeHealth(
+      program({
+        milestones: [
+          ms({ id: "a", name: "Backbone upgrade", component: "Network" }),
+          ms({ id: "b", name: "Rack install", component: "DC ops", status: "at_risk" }),
+          ms({ id: "c", name: "Firmware", component: "", status: "done" }),
+        ],
+        risks: [risk({ component: "DC ops", severity: "high" })],
+      }),
+      NOW,
+    );
+    expect(h.overall).toBe("RED");
+    expect(h.components.map((c) => [c.name, c.rag])).toEqual([
+      ["Network", "GREEN"],
+      ["DC ops", "RED"],
+      ["General", "GREEN"],
+    ]);
+    expect(h.components[2].done).toBe(1);
+  });
+
+  it("measures slips against the original dates and the planned end", () => {
+    const h = computeHealth(
+      program({
+        milestones: [
+          ms({ id: "a", name: "Backbone upgrade", due: "2026-12-10", baselineDue: "2026-12-10" }),
+          ms({ id: "b", name: "Rack install", component: "DC ops", due: "2027-01-20", baselineDue: "2026-12-15" }),
+          ms({ id: "c", name: "No date yet", due: "", baselineDue: "" }),
+        ],
+      }),
+      NOW,
+    );
+    expect(h.plan.dated).toBe(2);
+    expect(h.plan.onPlan).toBe(1);
+    expect(h.plan.slips[0]).toMatchObject({ name: "Rack install", component: "DC ops", days: 36 });
+    expect(h.plan.endSlipDays).toBe(36);
+    expect(h.plan.summary).toContain("1 of 2 dated milestones");
+    expect(h.plan.summary).toContain("36 days after the planned 2026-12-15");
+    expect(h.components.find((c) => c.name === "DC ops")?.slipped).toBe(1);
+  });
+
+  it("says when there are no dates to compare", () => {
+    expect(computeHealth(program(), NOW).plan.summary).toContain("No milestone has a date yet");
   });
 });
 

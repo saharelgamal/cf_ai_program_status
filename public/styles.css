@@ -58,3 +58,5 @@ th { color: var(--muted); font-weight: 600; }
 #report textarea { min-height: 220px; font-size: 13px; }
 #report .review-form { flex-direction: column; align-items: stretch; }
 .error { color: var(--red); }
+tr.group td { padding-top: 10px; border-bottom: 1px solid var(--border); }
+.slip { color: var(--red); }
