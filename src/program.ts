@@ -4,7 +4,7 @@
 // at a time, so two people posting updates at once can't overwrite each other.
 
 import { DurableObject } from "cloudflare:workers";
-import { computeHealth, nextMondayMorning, type Dependency, type Health, type Milestone, type ProgramSnapshot, type Risk } from "./status";
+import { computeHealth, nextMondayMorning, GENERAL, roster, teamOf, type Dependency, type Person, type Health, type Milestone, type ProgramSnapshot, type Risk } from "./status";
 import { idFor, runTurn, type ChatMessage, type MilestoneChange, type TurnResult } from "./llm";
 
 export type ReportStatus = "drafting" | "awaiting_approval" | "approved" | "changes_requested" | "expired" | "failed";
@@ -35,6 +35,8 @@ export interface ProgramState extends ProgramSnapshot {
   createdAt: string;
   messages: Array<ChatMessage & { author: string; at: string }>;
   health: Health;
+  /** Each person's team and assignments, worked out from the tracker. */
+  people: Person[];
   reports: Report[];
   weeklySchedule: string | null; // ISO time of the next scheduled report, or null
 }
@@ -116,9 +118,13 @@ export class ProgramRoom extends DurableObject<Env> {
   }
 
   private applyTurn(turn: TurnResult, by: string): void {
-    for (const { originalDue, baselineDue: _ignored, ...m } of turn.milestones as Array<MilestoneChange & { baselineDue?: string }>) {
+    // A milestone or risk with no component takes the team its owner (or the poster) already works in.
+    const people = roster(this.snapshot());
+    for (const { originalDue, baselineDue: _ignored, ...change } of turn.milestones as Array<MilestoneChange & { baselineDue?: string }>) {
+      // "General" means the update named no team: let the default (the owner's team) fill it in.
+      const m = { ...change, component: change.component === GENERAL ? undefined : change.component };
       const defaults: Milestone = {
-        id: "", name: m.name, component: "", owner: "", due: "", baselineDue: "", status: "on_track", note: "", updatedAt: "",
+        id: "", name: m.name, component: teamOf(people, m.owner || by), owner: "", due: "", baselineDue: "", status: "on_track", note: "", updatedAt: "",
       };
       // The original plan date is set once: from the date the writer calls the original one,
       // otherwise from the first due date the milestone gets. Later updates move `due`, never the baseline.
@@ -126,8 +132,9 @@ export class ProgramRoom extends DurableObject<Env> {
         next.baselineDue ? next : { ...next, baselineDue: originalDue || next.due || "" },
       );
     }
-    for (const r of turn.risks) {
-      this.upsert<Risk>("risk", idFor(r), { id: "", description: r.description, component: "", severity: "medium", owner: "", mitigation: "", status: "open", updatedAt: "" }, r, by);
+    for (const change of turn.risks) {
+      const r = { ...change, component: change.component === GENERAL ? undefined : change.component };
+      this.upsert<Risk>("risk", idFor(r), { id: "", description: r.description, component: teamOf(people, r.owner || by), severity: "medium", owner: "", mitigation: "", status: "open", updatedAt: "" }, r, by);
     }
     for (const d of turn.dependencies) {
       this.upsert<Dependency>("dependency", idFor(d), { id: "", description: d.description, team: "", neededBy: "", status: "open", updatedAt: "" }, d, by);
@@ -203,6 +210,7 @@ export class ProgramRoom extends DurableObject<Env> {
         .toArray()
         .map((m) => ({ role: m.role as ChatMessage["role"], author: m.author, content: m.content, at: m.at })),
       health: computeHealth(snap),
+      people: roster(snap),
       reports: this.sql
         .exec<{ data: string }>("SELECT data FROM reports ORDER BY created_at DESC LIMIT 10")
         .toArray()

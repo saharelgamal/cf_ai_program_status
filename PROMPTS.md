@@ -31,6 +31,8 @@ After the first version was on GitHub, I tried it and asked for changes:
 
 > Ok - i need to include some changes. 1. in the milestones, include the name, the team/item included in the project, so that the output is more descriptive 2. the report should have a summary of the status of each component followed by an overall summary with regards to where we stand with respect to the original plan
 
+> I want the name and the team and what everyone is assigned to to be automatically populated in the status update table next to it
+
 ## 2. Task brief given to the coding assistant
 
 From the job posting's optional assignment:
@@ -69,6 +71,8 @@ These were the assistant's proposals, kept in the final code:
   its first due date and never moved. The same health rules run per component, and a plan comparison counts
   slipped milestones, the largest slip and how far the end date has moved. The report is ordered: status by
   component, then the overall position against the original plan.
+- A status updates table beside the chat shows each update's poster, team and assignments, worked out from the
+  tracker rather than typed in. An update that names no team is filed under the poster's team.
 
 ## 4. Prompts the app sends to the LLM at runtime
 

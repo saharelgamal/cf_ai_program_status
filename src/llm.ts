@@ -1,7 +1,7 @@
 // Everything that talks to the LLM lives here: the prompts, the Workers AI calls,
 // and a small offline mock so the app can run and be tested without Workers AI.
 
-import { daysLate, GENERAL, slugify, type Health, type MilestoneStatus, type ProgramSnapshot, type Severity } from "./status";
+import { daysLate, GENERAL, roster, slugify, teamOf, type Health, type MilestoneStatus, type ProgramSnapshot, type Severity } from "./status";
 
 export const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
@@ -77,7 +77,12 @@ function stateForPrompt(p: ProgramSnapshot): string {
   const ds = p.dependencies.map(
     (d) => `- [${d.id}] ${d.description} | team: ${d.team || "?"} | needed by: ${d.neededBy || "?"} | ${d.status}`,
   );
+  const people = roster(p).map(
+    (x) => `- ${x.name}: ${x.teams.join(", ") || "team not known"}${x.assignments.length ? ` | working on: ${x.assignments.join("; ")}` : ""}`,
+  );
   return [
+    "People:",
+    ...(people.length ? people : ["(none yet)"]),
     "Milestones:",
     ...(ms.length ? ms : ["(none yet)"]),
     "Risks:",
@@ -101,8 +106,9 @@ How to work:
    Dates are YYYY-MM-DD; turn "next Friday" into a date using today's date.
    If the writer says "I" or "my team" owns something, the owner is "${speaker}".
 2. Every milestone belongs to a component: the team or workstream doing it (for example "Network",
-   "DC ops", "Hardware", "Software"). Reuse a component name already in the tracker when it fits; use
-   "General" only if the update gives no clue. Name the milestone after the work, not the team.
+   "DC ops", "Hardware", "Software"). Reuse a component name already in the tracker when it fits. If the update
+   names no team, use the writer's team from "People", and "General" only if nothing gives a clue.
+   Name the milestone after the work, not the team.
    Put a date in "due" only when the writer gives one. If they say a milestone moved from an earlier
    date, put that earlier date in "originalDue". The tracker keeps each milestone's original plan date.
 3. Milestone status: on_track, at_risk (may slip), off_track (will miss its date or is blocked), done.
@@ -181,7 +187,8 @@ export async function runTurn(
   if (useMock(env)) {
     // History lines look like "Priya: <update>"; the mock wants just the update.
     const last = history[history.length - 1]?.content ?? "";
-    return mockTurn(last.startsWith(`${speaker}: `) ? last.slice(speaker.length + 2) : last, speaker, today);
+    const team = teamOf(roster(program), speaker);
+    return mockTurn(last.startsWith(`${speaker}: `) ? last.slice(speaker.length + 2) : last, speaker, today, team);
   }
 
   const messages = [{ role: "system", content: turnSystemPrompt(program, speaker, today) }, ...history];
@@ -293,7 +300,7 @@ ${plan.slips.map((s) => `- ${s.component} / ${s.name}: planned ${s.baselineDue},
 
 Items with no update for a week: ${health.stale.join("; ") || "none"}
 
-${stateForPrompt({ ...p, milestones: [] }).split("\n").slice(2).join("\n")}
+${stateForPrompt({ ...p, milestones: [] }).split("\n").filter((l, i, all) => i >= all.indexOf("Risks:")).join("\n")}
 
 Status updates received this week:
 ${recentUpdates.join("\n") || "(none)"}
@@ -346,7 +353,7 @@ const ORIGINAL_RE = /\b(?:originally|was|from)\s+(\d{4}-\d{2}-\d{2})/i;
 /** "Network - Backbone upgrade" → component "Network", rest "Backbone upgrade". */
 const COMPONENT_RE = /^([A-Za-z][\w &/]{0,40}?)\s+[-–]\s+(.+)$/s;
 
-export function mockTurn(text: string, speaker: string, _today: string): TurnResult {
+export function mockTurn(text: string, speaker: string, _today: string, speakerTeam = ""): TurnResult {
   const result: TurnResult = { reply: "", milestones: [], risks: [], dependencies: [] };
   const sentences = text.split(/(?<=[.;!?\n])\s*/).map((s) => s.trim()).filter(Boolean);
   const questions: string[] = [];
@@ -381,7 +388,7 @@ export function mockTurn(text: string, speaker: string, _today: string): TurnRes
       const name = head.replace(/[.;!?]$/, "");
       result.milestones.push({ name, component, owner: speaker, due, originalDue, status, note: s });
       if (status !== "done" && !due) questions.push(`What's the due date for "${name}"?`);
-      if (!component) questions.push(`Which team or component is "${name}" part of?`);
+      if (!component && !speakerTeam) questions.push(`Which team or component is "${name}" part of?`);
     }
   }
 

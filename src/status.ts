@@ -102,6 +102,48 @@ export interface PlanVariance {
 
 export const GENERAL = "General";
 
+/** One person on the program, worked out from the tracker: nobody has to type it in. */
+export interface Person {
+  name: string;
+  /** Components of the items they own, the one with the most open work first. */
+  teams: string[];
+  /** Open milestones and risks they own. */
+  assignments: string[];
+}
+
+/**
+ * Who works on what. A person's team is the component of the milestones and risks they own,
+ * and their assignments are the open items they own. Names match regardless of case.
+ */
+export function roster(p: ProgramSnapshot): Person[] {
+  const people = new Map<string, { name: string; teams: Map<string, number>; assignments: string[] }>();
+  const add = (owner: string, component: string, assignment: string | null) => {
+    const name = owner.trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    const person = people.get(key) ?? { name, teams: new Map<string, number>(), assignments: [] as string[] };
+    // Open work counts double, so a person's main team is where their current work is.
+    if (component) person.teams.set(component, (person.teams.get(component) ?? 0) + (assignment ? 2 : 1));
+    if (assignment) person.assignments.push(assignment);
+    people.set(key, person);
+  };
+  for (const m of p.milestones) add(m.owner, m.component || GENERAL, m.status === "done" ? null : m.name);
+  for (const r of p.risks) add(r.owner, r.component || "", r.status === "open" ? `Risk: ${r.description}` : null);
+  return [...people.values()]
+    .map((x) => ({
+      name: x.name,
+      teams: [...x.teams.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t),
+      assignments: x.assignments,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The team a person mostly works in, or "" if the tracker doesn't say yet. */
+export function teamOf(people: Person[], name: string): string {
+  const team = people.find((x) => x.name.toLowerCase() === name.trim().toLowerCase())?.teams.find((t) => t !== GENERAL);
+  return team ?? "";
+}
+
 export const STALE_DAYS = 7;
 
 /** Turns a name into a stable id, so "EU PoP rollout" and "eu pop rollout" are the same milestone. */

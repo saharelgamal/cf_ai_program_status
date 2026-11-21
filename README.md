@@ -69,6 +69,10 @@ a human in the loop on the one thing that leaves the team: the report leadership
   and keeps its original plan date, set from the first due date it was given and never moved by later updates.
   The same health rules run for each component, and `planVariance` counts how many milestones are still on their
   original dates, the largest slip, and how many days the last milestone has moved. The LLM writes the words around these numbers; it doesn't compute them.
+- **Who works on what fills itself in.** Nobody maintains a team list. A person's team is the component of the
+  work they own (open work counts most), and their assignments are their open milestones and risks. The
+  **Status updates** table shows each update with the poster's name, team and assignments, and an update that
+  names no team is filed under the poster's team.
 - **Stale-update detection.** Open items nobody has updated for 7 days are listed under "Needs an update", the usual TPM chase list.
 
 ## Try it
@@ -79,7 +83,7 @@ a human in the loop on the one thing that leaves the team: the report leadership
    - `Network - Canary rollout is done in 3 PoPs. DC ops - FRA rack install is due 2026-12-15.`
    - `DC ops - FRA rack install slips to 2027-01-20, originally 2026-12-15, because of a vendor delay.`
    - `Hardware - New risk: optics shortage could block Q1 turn-ups, high, mitigated by a second supplier.`
-3. Watch the tracker update: milestones are grouped by component, each with its own health colour, and slipped
+3. Watch the **Status updates** table fill in each poster's team and assignments, and the tracker update: milestones are grouped by component, each with its own health colour, and slipped
    dates show the original plan date. Answer the agent's follow-up questions.
 4. Click **Draft report now**. The draft gives a status for each component, then the overall position against
    the original plan. Edit it if you like, enter a reviewer name and **Approve**.

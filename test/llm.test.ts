@@ -67,6 +67,13 @@ describe("mockTurn (offline mode)", () => {
   });
 });
 
+describe("mockTurn with a known team", () => {
+  it("doesn't ask for the team when the poster's team is already known", () => {
+    const t = mockTurn("Backbone upgrade: due 2026-12-20.", "Priya", "2026-11-21", "Network");
+    expect(t.reply).not.toContain("Which team");
+  });
+});
+
 describe("sanitizeTurn: components and original dates", () => {
   it("keeps a component and a valid original date", () => {
     const t = sanitizeTurn({

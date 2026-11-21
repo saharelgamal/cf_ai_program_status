@@ -60,3 +60,5 @@ th { color: var(--muted); font-weight: 600; }
 .error { color: var(--red); }
 tr.group td { padding-top: 10px; border-bottom: 1px solid var(--border); }
 .slip { color: var(--red); }
+.nowrap { white-space: nowrap; }
+.updates td:last-child { white-space: pre-wrap; }

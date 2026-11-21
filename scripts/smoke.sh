@@ -34,6 +34,13 @@ echo "components: $(echo "$STATE" | jq -c '[.health.components[] | {(.name): .ra
 echo "plan: $(echo "$STATE" | jq -r .health.plan.summary)"
 [ "$(echo "$STATE" | jq -r '.health.plan.slips[0].days')" = "11" ] || { echo "expected an 11-day slip"; exit 1; }
 
+# A later update with no team takes the poster's team, and the roster lists who works on what.
+post "/api/programs/$ID/updates" '{"author":"Priya","text":"Power cabling: due 2026-12-05."}' >/dev/null
+STATE=$(get "/api/programs/$ID")
+[ "$(echo "$STATE" | jq -r '.milestones[] | select(.name == "Power cabling") | .component')" = "DC ops" ] || { echo "expected the poster's team"; exit 1; }
+echo "people: $(echo "$STATE" | jq -c '[.people[] | {name, teams, assignments}]')"
+[ "$(echo "$STATE" | jq -r '.people[] | select(.name == "Priya") | .assignments | join(", ")')" = "EU racks, Power cabling" ] || { echo "wrong assignments"; exit 1; }
+
 REPORT=$(post "/api/programs/$ID/reports" '{}' | jq -r .id)
 echo "report workflow: $REPORT"
 for i in $(seq 1 30); do

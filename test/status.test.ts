@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeHealth, nextMondayMorning, slugify, type ProgramSnapshot } from "../src/status";
+import { computeHealth, nextMondayMorning, roster, slugify, teamOf, type ProgramSnapshot } from "../src/status";
 
 const NOW = new Date("2026-11-21T12:00:00Z");
 const fresh = "2026-11-20T12:00:00Z";
@@ -99,6 +99,28 @@ describe("by component and against the original plan", () => {
 
   it("says when there are no dates to compare", () => {
     expect(computeHealth(program(), NOW).plan.summary).toContain("No milestone has a date yet");
+  });
+});
+
+describe("roster (who works on what)", () => {
+  it("takes each person's team and open assignments from the items they own", () => {
+    const people = roster(
+      program({
+        milestones: [
+          ms({ id: "a", name: "Backbone upgrade", component: "Network", owner: "Priya" }),
+          ms({ id: "b", name: "Canary rollout", component: "Network", owner: "priya", status: "done" }),
+          ms({ id: "c", name: "FRA rack install", component: "DC ops", owner: "Marco" }),
+        ],
+        risks: [risk({ description: "Optics shortage", component: "Hardware", owner: "Lena" })],
+      }),
+    );
+    expect(people).toEqual([
+      { name: "Lena", teams: ["Hardware"], assignments: ["Risk: Optics shortage"] },
+      { name: "Marco", teams: ["DC ops"], assignments: ["FRA rack install"] },
+      { name: "Priya", teams: ["Network"], assignments: ["Backbone upgrade"] },
+    ]);
+    expect(teamOf(people, "PRIYA")).toBe("Network");
+    expect(teamOf(people, "Nobody")).toBe("");
   });
 });
 

@@ -28,6 +28,7 @@
 
   <!-- Program screen -->
   <main id="program" class="grid" hidden>
+    <div class="left">
     <section class="card chat">
       <h2 id="program-title"></h2>
       <div id="messages" aria-live="polite"></div>
@@ -42,6 +43,15 @@
         </div>
       </form>
     </section>
+
+    <section class="card">
+      <h3>Status updates</h3>
+      <p class="muted small">Team and assignments fill in automatically from the tracker: a person's team is the
+        component of the work they own, and "Assigned to" lists their open milestones and risks.</p>
+      <table class="updates"><thead><tr><th>When</th><th>Name</th><th>Team</th><th>Assigned to</th><th>Update</th></tr></thead>
+        <tbody id="updates"></tbody></table>
+    </section>
+    </div>
 
     <section class="side">
       <div class="card">

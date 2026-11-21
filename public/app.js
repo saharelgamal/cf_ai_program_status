@@ -90,6 +90,7 @@ function render(state) {
   $("program-title").textContent = state.name;
   document.title = `${state.name} · Program Status Agent`;
   renderMessages(state.messages);
+  renderUpdates(state.messages, state.people);
   renderHealth(state.health);
   renderTracker(state);
   renderReport(state.reports[0]);
@@ -119,6 +120,30 @@ function renderMessages(messages) {
   }
   if (atBottom || box.dataset.first !== "done") box.scrollTop = box.scrollHeight;
   box.dataset.first = "done";
+}
+
+/** One row per status update, newest first, with the poster's team and assignments filled in from the tracker. */
+function renderUpdates(messages, people) {
+  const byName = new Map(people.map((p) => [p.name.toLowerCase(), p]));
+  const rows = messages
+    .filter((m) => m.role === "user")
+    .slice(-20)
+    .reverse()
+    .map((m) => {
+      const person = byName.get(m.author.toLowerCase());
+      const teams = person ? person.teams.filter((t) => t !== "General") : [];
+      const tr = el("tr");
+      const when = new Date(m.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      tr.append(
+        el("td", when, "muted nowrap"),
+        el("td", m.author),
+        el("td", teams.join(", ") || "—"),
+        el("td", person?.assignments.join("; ") || "—"),
+        el("td", m.content),
+      );
+      return tr;
+    });
+  $("updates").replaceChildren(...(rows.length ? rows : [emptyRow(5)]));
 }
 
 function renderHealth(health) {
