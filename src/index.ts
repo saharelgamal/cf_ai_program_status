@@ -49,8 +49,9 @@ export default {
       // Post a status update in chat.
       if (method === "POST" && rest === "/updates") {
         const { author, text } = await body<{ author: string; text: string }>(request);
+        if (!author?.trim()) return json({ error: "Add your name, so the team knows who posted the update." }, 400);
         if (!text?.trim()) return json({ error: "The update is empty." }, 400);
-        return json(await program.chat(author ?? "", text));
+        return json(await program.chat(author, text));
       }
 
       // Draft this week's report now (starts the Workflow).

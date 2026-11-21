@@ -13,6 +13,8 @@ export interface Milestone {
   status: MilestoneStatus;
   note: string;
   updatedAt: string;
+  /** Who posted the update that last changed this item. */
+  updatedBy?: string;
 }
 
 export interface Risk {
@@ -23,6 +25,7 @@ export interface Risk {
   mitigation: string;
   status: "open" | "closed";
   updatedAt: string;
+  updatedBy?: string;
 }
 
 export interface Dependency {
@@ -34,6 +37,7 @@ export interface Dependency {
   neededBy: string;
   status: "open" | "resolved";
   updatedAt: string;
+  updatedBy?: string;
 }
 
 export interface ProgramSnapshot {

@@ -33,11 +33,11 @@ async function api(path, options = {}) {
   return data;
 }
 
-// ---- Your name ------------------------------------------------------------
+// ---- Who is posting: remembered in this browser -----------------------------
 
 $("you").value = store.get("you", "");
 $("you").addEventListener("change", () => store.set("you", $("you").value.trim()));
-const you = () => $("you").value.trim() || "Anonymous";
+const you = () => $("you").value.trim();
 
 // ---- Start screen -----------------------------------------------------------
 
@@ -137,17 +137,17 @@ function renderTracker(state) {
     tr.append(el("td", m.name), el("td", m.owner || "—"), el("td", m.due || "—"));
     const td = el("td");
     td.append(el("span", m.status.replace("_", " "), `pill ${m.status}`));
-    tr.append(td);
+    tr.append(td, el("td", lastUpdate(m), "muted"));
     return tr;
   });
-  $("milestones").replaceChildren(...(rows.length ? rows : [emptyRow(4)]));
+  $("milestones").replaceChildren(...(rows.length ? rows : [emptyRow(5)]));
 
   $("risks").replaceChildren(
     ...(state.risks.length
       ? state.risks.map((r) => {
           const li = el("li");
           li.append(el("span", r.severity, `pill ${r.severity}`), document.createTextNode(` ${r.description}`));
-          li.append(el("div", `Owner: ${r.owner || "—"} · Mitigation: ${r.mitigation || "none yet"} · ${r.status}`, "muted"));
+          li.append(el("div", `Owner: ${r.owner || "—"} · Mitigation: ${r.mitigation || "none yet"} · ${r.status} · Last update: ${lastUpdate(r)}`, "muted"));
           return li;
         })
       : [el("li", "None yet.", "muted")]),
@@ -157,11 +157,17 @@ function renderTracker(state) {
     ...(state.dependencies.length
       ? state.dependencies.map((d) => {
           const li = el("li", d.description);
-          li.append(el("div", `Team: ${d.team || "—"} · Needed by: ${d.neededBy || "—"} · ${d.status}`, "muted"));
+          li.append(el("div", `Team: ${d.team || "—"} · Needed by: ${d.neededBy || "—"} · ${d.status} · Last update: ${lastUpdate(d)}`, "muted"));
           return li;
         })
       : [el("li", "None yet.", "muted")]),
   );
+}
+
+/** "Priya, Nov 21": who posted the update that last changed an item, and when. */
+function lastUpdate(item) {
+  const when = item.updatedAt ? new Date(item.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+  return [item.updatedBy, when].filter(Boolean).join(", ") || "—";
 }
 
 function emptyRow(cols) {
@@ -246,6 +252,11 @@ function renderReport(report) {
 $("update-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = $("update-text").value.trim();
+  if (!you()) {
+    alert("Add your name in Posting as, so the team knows who posted the update.");
+    $("you").focus();
+    return;
+  }
   if (!text) return;
   $("send").disabled = true;
   $("send").textContent = "Thinking…";

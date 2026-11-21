@@ -9,7 +9,6 @@
 <body>
   <header>
     <h1><a href="/">Program Status Agent</a></h1>
-    <label class="you">Your name <input id="you" placeholder="e.g. Priya" maxlength="60" /></label>
   </header>
 
   <!-- Start screen: create a program or open a recent one -->
@@ -32,10 +31,15 @@
     <section class="card chat">
       <h2 id="program-title"></h2>
       <div id="messages" aria-live="polite"></div>
-      <form id="update-form">
-        <textarea id="update-text" rows="3" maxlength="2000"
-          placeholder="Your status update, e.g. &quot;Canary rollout done in 3 PoPs. EU racks slip to 2026-12-12 because of a vendor delay.&quot;"></textarea>
-        <button type="submit" id="send">Send update</button>
+      <form id="update-form" class="update-form">
+        <label class="posting-as">Posting as
+          <input id="you" placeholder="Your name, e.g. Priya" maxlength="60" required />
+        </label>
+        <div class="send-row">
+          <textarea id="update-text" rows="3" maxlength="2000"
+            placeholder="Your status update, e.g. &quot;Canary rollout done in 3 PoPs. EU racks slip to 2026-12-12 because of a vendor delay.&quot;"></textarea>
+          <button type="submit" id="send">Send update</button>
+        </div>
       </form>
     </section>
 
@@ -51,7 +55,7 @@
 
       <div class="card">
         <h3>Milestones</h3>
-        <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due</th><th>Status</th></tr></thead>
+        <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due</th><th>Status</th><th>Last update</th></tr></thead>
           <tbody id="milestones"></tbody></table>
         <h3>Risks</h3>
         <ul id="risks" class="plain small"></ul>

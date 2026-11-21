@@ -68,8 +68,8 @@ a human in the loop on the one thing that leaves the team: the report leadership
 
 ## Try it
 
-1. Enter your name at the top, create a program (for example "EU edge capacity expansion").
-2. Post updates, for example:
+1. Create a program (for example "EU edge capacity expansion").
+2. Type your name in **Posting as** and post updates. Every update, and every tracker item it changes, records who posted it. For example:
    - `Canary rollout is done in 3 PoPs. The EU rack install is slipping because of a vendor delay.`
    - `New risk: optics shortage could block Q1 turn-ups. We're waiting on DC ops for power in FRA by 2026-12-01.`
 3. Watch the tracker and health colour update, and answer the agent's follow-up questions.
@@ -137,7 +137,7 @@ PROMPTS.md        AI prompts used to build this project
 
 ## Limits and next steps
 
-- No sign-in: anyone with a program's link can post to it. Next step: Cloudflare Access in front of the app.
+- No sign-in: the poster's name is what they type in **Posting as**, and anyone with a program's link can post to it. Next step: put Cloudflare Access in front of the app and take the name from the signed-in identity.
 - Updates come from the web chat only. Next steps: Slack or email intake, and voice updates with Cloudflare Realtime.
 - Send the approved report by email or post it to a channel, and keep a week-over-week history of health.
 

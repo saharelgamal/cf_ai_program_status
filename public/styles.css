@@ -31,8 +31,10 @@ main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 .plain li:last-child { border-bottom: 0; }
 input, textarea, button { font: inherit; color: inherit; }
 input, textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-.you input { width: 160px; margin-left: 6px; }
-.you { font-size: 13px; color: var(--muted); }
+.update-form { flex-direction: column; align-items: stretch; }
+.posting-as { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.posting-as input { max-width: 220px; }
+.send-row { display: flex; gap: 8px; align-items: flex-end; }
 button { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text); cursor: pointer; }
 button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
 button:disabled { opacity: 0.5; cursor: default; }

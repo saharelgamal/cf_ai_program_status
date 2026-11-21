@@ -14,7 +14,13 @@ post "/api/programs/$ID/updates" '{"author":"Priya","text":"Canary rollout: done
 post "/api/programs/$ID/updates" '{"author":"Marco","text":"Risk: high chance the optics shortage blocks Q1 turn-ups. Waiting on DC ops for power in FRA, needed by 2026-12-01."}' \
   | jq -r '.messages[-1].content'
 
+# Updates need a name, so every change records who made it.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/programs/$ID/updates" -H 'content-type: application/json' -d '{"text":"no name"}')
+[ "$code" = "400" ] || { echo "expected 400 without author, got $code"; exit 1; }
+
 STATE=$(get "/api/programs/$ID")
+[ "$(echo "$STATE" | jq -r '.risks[0].updatedBy')" = "Marco" ] || { echo "expected risk updatedBy Marco"; exit 1; }
+echo "risk last updated by: $(echo "$STATE" | jq -r '.risks[0].updatedBy')"
 echo "health: $(echo "$STATE" | jq -r .health.overall)  milestones: $(echo "$STATE" | jq '.milestones|length')  risks: $(echo "$STATE" | jq '.risks|length')  deps: $(echo "$STATE" | jq '.dependencies|length')"
 [ "$(echo "$STATE" | jq -r .health.overall)" = "RED" ] || { echo "expected RED (open high risk)"; exit 1; }
 
