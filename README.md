@@ -83,6 +83,8 @@ across five teams, so every part of the screen has something to show:
 - **Overall health** with the rules' reasons, and buttons to draft the weekly report or schedule it.
 - **Key numbers:** milestones by status, open risks by severity, overdue items, end date against the plan,
   items with no update for a week, and how many updates came in this week from how many people.
+- **Key numbers:** eight tiles (milestones, at risk, off track, open risks, overdue, end date vs plan, needs an
+  update, updates this week). Click a tile to list the items behind its number; click a row to jump to that item.
 - **Component cards:** each team's own red, amber or green, a progress bar by status, slips, open risks,
   the next milestone and who works there.
 - **Timeline:** every milestone's original date against its current date, with the slip in days and a today line.

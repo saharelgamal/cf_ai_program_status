@@ -41,6 +41,10 @@ After the first version was on GitHub, I tried it and asked for changes:
 
 > i want the dashboard to update as i enter chat updates - this doesn't seem to happen
 
+> i want to be able to click on those and see them
+
+(With a screenshot of the eight key-number tiles.)
+
 ## 2. Task brief given to the coding assistant
 
 From the job posting's optional assignment:

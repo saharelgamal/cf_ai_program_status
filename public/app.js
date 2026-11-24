@@ -110,6 +110,7 @@ $("open-demo").addEventListener("click", () => createProgram({ demo: true }));
 async function openProgram(id) {
   programId = id;
   $("changes").hidden = true;
+  openTile = null;
   $("start").hidden = true;
   $("program").hidden = false;
   lastReportKey = "";
@@ -165,10 +166,178 @@ function renderHero(state) {
 
 // ---- Key numbers ------------------------------------------------------------
 
-function tile(label, value, sub, tone = "") {
-  const div = el("div", null, `kpi ${tone}`);
-  div.append(el("div", label, "kpi-label"), el("div", String(value), "kpi-value"), el("div", sub, "kpi-sub"));
-  return div;
+let openTile = null; // the key-number tile whose list is open, kept across redraws
+
+function tile(key, label, value, sub, tone = "") {
+  const btn = el("button", null, `kpi ${tone}${openTile === key ? " open" : ""}`);
+  btn.type = "button";
+  btn.dataset.tile = key;
+  btn.setAttribute("aria-expanded", String(openTile === key));
+  btn.title = "Show the items behind this number";
+  btn.append(el("div", label, "kpi-label"), el("div", String(value), "kpi-value"), el("div", sub, "kpi-sub"));
+  btn.addEventListener("click", () => {
+    openTile = openTile === key ? null : key;
+    renderKpis(current);
+    if (openTile) $("kpi-detail").scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+  });
+  return btn;
+}
+
+/** Open items with no update for STALE_DAYS days, matching the server's rule. */
+function staleItems(state) {
+  const cutoff = Date.now() - 7 * DAY;
+  const old = (i) => i.updatedAt && Date.parse(i.updatedAt) <= cutoff;
+  return [
+    ...state.milestones.filter((m) => m.status !== "done" && old(m)).map((m) => ({ kind: "milestone", item: m, name: m.name, team: m.component, owner: m.owner })),
+    ...state.risks.filter((r) => r.status === "open" && old(r)).map((r) => ({ kind: "risk", item: r, name: r.description, team: r.component, owner: r.owner })),
+    ...state.dependencies.filter((d) => d.status === "open" && old(d)).map((d) => ({ kind: "dependency", item: d, name: d.description, team: d.team, owner: d.updatedBy })),
+  ];
+}
+
+function statusPill(status) {
+  return el("span", STATUS_LABEL[status] || status, `pill ${status}`);
+}
+
+function nameCell(title, note) {
+  const td = el("td");
+  td.append(el("div", title));
+  if (note) td.append(el("div", note, "muted small"));
+  return td;
+}
+
+const milestoneRow = (m) => ({
+  key: `milestone:${m.id}`,
+  cells: [nameCell(m.name, m.note), el("td", m.component || GENERAL), el("td", m.owner || "—"), dueCell(m), (() => { const td = el("td"); td.append(statusPill(m.status)); return td; })()],
+});
+const MILESTONE_HEAD = ["Milestone", "Team", "Owner", "Due (vs plan)", "Status"];
+
+/** The items behind each key number: a title, column headings and rows. */
+function tileDetail(key, state) {
+  const today = todayIso();
+  const ms = state.milestones;
+  const open = state.risks.filter((r) => r.status === "open");
+  const sevOrder = { high: 0, medium: 1, low: 2 };
+  const byDue = (a, b) => (a.due || "9999").localeCompare(b.due || "9999");
+  switch (key) {
+    case "milestones":
+      return { title: "All milestones", head: MILESTONE_HEAD, rows: [...ms].sort(byDue).map(milestoneRow) };
+    case "at_risk":
+      return { title: "Milestones at risk", head: MILESTONE_HEAD, rows: ms.filter((m) => m.status === "at_risk").sort(byDue).map(milestoneRow) };
+    case "off_track":
+      return { title: "Milestones off track", head: MILESTONE_HEAD, rows: ms.filter((m) => m.status === "off_track").sort(byDue).map(milestoneRow) };
+    case "risks":
+      return {
+        title: "Open risks",
+        head: ["Risk", "Team", "Severity", "Owner", "Mitigation"],
+        rows: [...open].sort((a, b) => sevOrder[a.severity] - sevOrder[b.severity]).map((r) => ({
+          key: `risk:${r.id}`,
+          cells: [el("td", r.description), el("td", r.component || "—"), (() => { const td = el("td"); td.append(el("span", r.severity, `pill ${r.severity === "high" ? "RED" : r.severity === "medium" ? "AMBER" : "GREEN"}`)); return td; })(),
+            el("td", r.owner || "—"), el("td", r.mitigation || "None yet", r.mitigation ? "small" : "small warn")],
+        })),
+      };
+    case "overdue":
+      return {
+        title: "Overdue",
+        head: ["Item", "Team", "Was due", "Late by", "Owner"],
+        rows: [
+          ...ms.filter((m) => m.status !== "done" && isDate(m.due) && m.due < today).map((m) => ({
+            key: `milestone:${m.id}`,
+            cells: [nameCell(m.name, "Milestone"), el("td", m.component || GENERAL), el("td", shortDate(m.due), "nowrap"), el("td", `${daysBetween(m.due, today)}d`, "bad"), el("td", m.owner || "—")],
+          })),
+          ...state.dependencies.filter((d) => d.status === "open" && isDate(d.neededBy) && d.neededBy < today).map((d) => ({
+            key: `dependency:${d.id}`,
+            cells: [nameCell(d.description, "Dependency"), el("td", d.team || "—"), el("td", shortDate(d.neededBy), "nowrap"), el("td", `${daysBetween(d.neededBy, today)}d`, "bad"), el("td", d.updatedBy || "—")],
+          })),
+        ],
+      };
+    case "plan": {
+      const plan = state.health.plan;
+      return {
+        title: "End date vs plan",
+        intro: plan.summary,
+        head: ["Milestone", "Team", "Original date", "Current date", "Slip"],
+        rows: plan.slips.map((sl) => {
+          const m = ms.find((x) => x.name === sl.name);
+          return {
+            key: m ? `milestone:${m.id}` : "",
+            cells: [el("td", sl.name), el("td", sl.component), el("td", shortDate(sl.baselineDue), "nowrap"), el("td", shortDate(sl.due), "nowrap"), el("td", signed(sl.days), sl.days > 0 ? "bad" : "ok")],
+          };
+        }),
+        empty: "No date has moved from the original plan.",
+      };
+    }
+    case "stale":
+      return {
+        title: "Needs an update",
+        intro: "Open items nobody has posted about for 7 days. This is the chase list.",
+        head: ["Item", "Kind", "Team", "Owner", "Last update"],
+        rows: staleItems(state).map((x) => ({
+          key: `${x.kind}:${x.item.id}`,
+          cells: [el("td", x.name), el("td", x.kind), el("td", x.team || "—"), el("td", x.owner || "—"), el("td", lastUpdate(x.item), "muted small")],
+        })),
+      };
+    case "updates": {
+      const weekAgo = new Date(Date.now() - 7 * DAY).toISOString();
+      return {
+        title: "Updates this week",
+        head: ["When", "Name", "Update"],
+        rows: state.messages.filter((m) => m.role === "user" && m.at >= weekAgo).reverse().map((m) => ({
+          key: "",
+          cells: [el("td", new Date(m.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }), "muted nowrap small"),
+            el("td", m.author), el("td", m.content, "small")],
+        })),
+      };
+    }
+  }
+  return null;
+}
+
+function renderTileDetail(state) {
+  const box = $("kpi-detail");
+  const detail = openTile && tileDetail(openTile, state);
+  box.hidden = !detail;
+  if (!detail) return box.replaceChildren();
+
+  const head = el("div", null, "card-head");
+  head.append(el("h3", `${detail.title} (${detail.rows.length})`));
+  const close = el("button", "Close", "secondary small");
+  close.type = "button";
+  close.addEventListener("click", () => { openTile = null; renderKpis(current); });
+  head.append(close);
+  box.replaceChildren(head);
+  if (detail.intro) box.append(el("p", detail.intro, "small plan-line"));
+  if (!detail.rows.length) {
+    box.append(el("p", detail.empty || "Nothing here right now.", "muted small"));
+    return;
+  }
+  const table = el("table");
+  const thead = el("thead");
+  const hr = el("tr");
+  for (const h of detail.head) hr.append(el("th", h));
+  thead.append(hr);
+  const tbody = el("tbody");
+  for (const row of detail.rows) {
+    const tr = el("tr");
+    tr.append(...row.cells);
+    if (row.key) {
+      // Click a row to jump to that item further down the dashboard.
+      tr.className = "jump";
+      tr.title = "Show it on the dashboard";
+      tr.addEventListener("click", () => {
+        const target = document.querySelector(`#milestones [data-key="${row.key}"], #risks [data-key="${row.key}"], #dependencies [data-key="${row.key}"]`);
+        if (!target) return;
+        target.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        target.classList.remove("flash");
+        void target.offsetWidth;
+        target.classList.add("flash");
+      });
+    }
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  const wrap = el("div", null, "table-wrap");
+  wrap.append(table);
+  box.append(wrap);
 }
 
 function renderKpis(state) {
@@ -185,16 +354,17 @@ function renderKpis(state) {
   const plan = state.health.plan;
 
   $("kpis").replaceChildren(
-    tile("Milestones", ms.length, `${count("done")} done · ${count("on_track")} on track`),
-    tile("At risk", count("at_risk"), "may slip", count("at_risk") ? "AMBER" : ""),
-    tile("Off track", count("off_track"), "will miss or blocked", count("off_track") ? "RED" : ""),
-    tile("Open risks", open.length, `${sev("high")} high · ${sev("medium")} medium · ${sev("low")} low`, sev("high") ? "RED" : sev("medium") ? "AMBER" : ""),
-    tile("Overdue", overdueMs + lateDeps, `${plural(overdueMs, "milestone")} · ${lateDeps} ${lateDeps === 1 ? "dependency" : "dependencies"}`, overdueMs + lateDeps ? "AMBER" : ""),
-    tile("End date vs plan", plan.dated ? signed(plan.endSlipDays) : "—",
+    tile("milestones", "Milestones", ms.length, `${count("done")} done · ${count("on_track")} on track`),
+    tile("at_risk", "At risk", count("at_risk"), "may slip", count("at_risk") ? "AMBER" : ""),
+    tile("off_track", "Off track", count("off_track"), "will miss or blocked", count("off_track") ? "RED" : ""),
+    tile("risks", "Open risks", open.length, `${sev("high")} high · ${sev("medium")} medium · ${sev("low")} low`, sev("high") ? "RED" : sev("medium") ? "AMBER" : ""),
+    tile("overdue", "Overdue", overdueMs + lateDeps, `${plural(overdueMs, "milestone")} · ${lateDeps} ${lateDeps === 1 ? "dependency" : "dependencies"}`, overdueMs + lateDeps ? "AMBER" : ""),
+    tile("plan", "End date vs plan", plan.dated ? signed(plan.endSlipDays) : "—",
       plan.dated ? `forecast ${shortDate(plan.forecastEnd)}, planned ${shortDate(plan.plannedEnd)}` : "no dates yet", plan.endSlipDays ? "AMBER" : ""),
-    tile("Needs an update", state.health.stale.length, "nothing posted for 7 days", state.health.stale.length ? "AMBER" : ""),
-    tile("Updates this week", updates.length, `from ${posters} ${posters === 1 ? "person" : "people"}`),
+    tile("stale", "Needs an update", state.health.stale.length, "nothing posted for 7 days", state.health.stale.length ? "AMBER" : ""),
+    tile("updates", "Updates this week", updates.length, `from ${posters} ${posters === 1 ? "person" : "people"}`),
   );
+  renderTileDetail(state);
 }
 
 // ---- Component cards --------------------------------------------------------
