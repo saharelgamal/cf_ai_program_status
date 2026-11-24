@@ -175,3 +175,11 @@ tr.group td { padding-top: 12px; background: var(--soft); }
 .report-text { white-space: pre-wrap; background: var(--soft); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 13px; }
 .review-form { display: flex; flex-direction: column; gap: 8px; }
 #report textarea { min-height: 260px; font-size: 13px; }
+
+/* ---- What the last update changed ---- */
+.changes { border: 1px solid color-mix(in srgb, var(--blue) 40%, var(--border)); background: color-mix(in srgb, var(--blue) 8%, var(--card));
+  border-radius: 12px; padding: 10px 14px; }
+.changes.none { border-color: var(--border); background: var(--soft); }
+.changes ul { margin: 4px 0 0; padding-left: 18px; }
+@keyframes flash { from { background-color: color-mix(in srgb, var(--blue) 22%, transparent); } to { background-color: transparent; } }
+.flash { animation: flash 3s ease-out; }

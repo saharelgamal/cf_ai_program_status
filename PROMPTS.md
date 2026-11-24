@@ -39,6 +39,8 @@ After the first version was on GitHub, I tried it and asked for changes:
 
 > how can we make a better version ? it looks dull and doesnt give a lot of information
 
+> i want the dashboard to update as i enter chat updates - this doesn't seem to happen
+
 ## 2. Task brief given to the coding assistant
 
 From the job posting's optional assignment:
@@ -82,6 +84,8 @@ These were the assistant's proposals, kept in the final code:
 - The screen became a program dashboard: overall health and its reasons, key numbers, a card per component,
   a timeline of original against current dates, risks by severity, dependencies, recent updates and the report,
   with the chat beside it. A demo program, seeded without calling the LLM, fills it on the first visit.
+- After each chat update the dashboard shows what changed and highlights it. Offline mode matches an update to
+  the tracker item it names, so "FRA rack install is done" changes that milestone instead of adding a new one.
 
 ## 4. Prompts the app sends to the LLM at runtime
 

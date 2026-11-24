@@ -192,7 +192,7 @@ export async function runTurn(
     const last = history[history.length - 1]?.content ?? "";
     const team = teamOf(roster(program), speaker);
     const lastQuestion = history.at(-2)?.role === "assistant" ? history.at(-2)!.content : "";
-    return mockTurn(last.startsWith(`${speaker}: `) ? last.slice(speaker.length + 2) : last, speaker, today, team, lastQuestion);
+    return mockTurn(last.startsWith(`${speaker}: `) ? last.slice(speaker.length + 2) : last, speaker, today, team, lastQuestion, program);
   }
 
   const messages = [{ role: "system", content: turnSystemPrompt(program, speaker, today) }, ...history];
@@ -411,6 +411,8 @@ export function normalizeDates(text: string, today: string): string {
 /** "Delay on the backbone deployment" → "Backbone deployment". */
 function milestoneName(sentence: string): string {
   let head = sentence.split(/:|\s[-–]\s|,/)[0].trim();
+  // Stop at the verb: "AMS rack install is due ..." → "AMS rack install".
+  head = head.split(/\s(?:is|are|was|were|will|has|have|had|now|slips?|slipped|slipping|moved?|moves|due|expected|done|finished|completed?)\b/i)[0].trim() || head;
   head = head.replace(/^(?:a\s+|the\s+)?(?:delays?|slip(?:page)?|update|progress|news)\s+(?:on|to|for|in|with)\s+(?:the\s+)?/i, "");
   head = head.replace(/^(?:the|our)\s+/i, "");
   const words = head.split(/\s+/);
@@ -418,13 +420,57 @@ function milestoneName(sentence: string): string {
   return head.charAt(0).toUpperCase() + head.slice(1);
 }
 
+const STOP = new Set([
+  "the", "and", "for", "our", "with", "from", "into", "this", "that", "now", "new", "will", "has", "have", "was", "are",
+  "is", "be", "of", "to", "in", "on", "at", "by", "due", "date", "still", "back", "track", "risk", "done", "slip", "slips",
+  "slipped", "slipping", "delay", "delayed", "late", "behind", "blocked", "complete", "completed", "finished", "update",
+  "originally", "because", "expected", "moved", "moves", "next", "week", "team",
+]);
+/** Significant words, cut to a short stem so "racks" matches "rack" and "installed" matches "install". */
+function stems(text: string): string[] {
+  return [...new Set(text.toLowerCase().replace(DATE_RE, " ").split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !STOP.has(w)).map((w) => (w.length > 3 ? w.replace(/s$/, "") : w).slice(0, 5)))];
+}
+
+type Existing = { kind: "milestone" | "risk" | "dependency"; id: string; name: string };
+
+/** Offline mode: finds the tracker item a sentence is about, so an update changes it instead of adding a new one. */
+export function matchExisting(sentence: string, p?: ProgramSnapshot): Existing | null {
+  if (!p) return null;
+  const words = new Set(stems(sentence));
+  // Words naming the thing the sentence is about, e.g. "AMS rack install" in "AMS rack install is done".
+  const subject = stems(milestoneName(sentence));
+  const items: Existing[] = [
+    ...p.milestones.map((m) => ({ kind: "milestone" as const, id: m.id, name: m.name })),
+    ...p.risks.map((r) => ({ kind: "risk" as const, id: r.id, name: r.description })),
+    ...p.dependencies.map((d) => ({ kind: "dependency" as const, id: d.id, name: d.description })),
+  ];
+  let best: Existing | null = null;
+  let bestScore = 0;
+  for (const item of items) {
+    const own = stems(item.name);
+    const hits = own.filter((w) => words.has(w)).length;
+    // Two shared words, or every word of a short name ("Optics delivery" needs both).
+    // A subject word the item doesn't have ("AMS" against "FRA rack install") means it's a different item,
+    // unless the sentence names every word of the item.
+    const extra = subject.some((w) => !own.includes(w));
+    const enough = hits >= Math.min(2, own.length) && (!extra || hits === own.length);
+    if (enough && hits > bestScore) {
+      best = item;
+      bestScore = hits;
+    }
+  }
+  return best;
+}
+
 const ASKED_DATE = /What's the due date for "([^"]+)"\?/;
 const ASKED_TEAM = /Which team or component is "([^"]+)" part of\?/;
 
 /** Offline mode: a short message right after the agent asked something is the answer to that question. */
 function answerToQuestion(text: string, lastQuestion: string): TurnResult | null {
-  const words = text.trim().split(/\s+/);
-  if (words.length > 8 || /[:]|\s[-–]\s/.test(text)) return null;
+  const words = text.replace(DATE_RE, "").trim().split(/\s+/).filter(Boolean);
+  // An answer is the date or team alone, with at most a few filler words ("by mid december").
+  if (words.length > 4 || /[:]|\s[-–]\s/.test(text)) return null;
   const date = text.match(DATE_RE)?.[0];
   const askedDate = lastQuestion.match(ASKED_DATE)?.[1];
   if (askedDate && date) {
@@ -450,9 +496,11 @@ function answerToQuestion(text: string, lastQuestion: string): TurnResult | null
  * It understands one update per sentence, "Team - Milestone: ..." prefixes, everyday dates,
  * and short answers to its own last question.
  */
-export function mockTurn(text: string, speaker: string, today: string, speakerTeam = "", lastQuestion = ""): TurnResult {
+export function mockTurn(
+  text: string, speaker: string, today: string, speakerTeam = "", lastQuestion = "", program?: ProgramSnapshot,
+): TurnResult {
   text = normalizeDates(text, today);
-  const answer = answerToQuestion(text, lastQuestion);
+  const answer = matchExisting(text, program) ? null : answerToQuestion(text, lastQuestion);
   if (answer) return answer;
 
   const result: TurnResult = { reply: "", milestones: [], risks: [], dependencies: [] };
@@ -466,6 +514,38 @@ export function mockTurn(text: string, speaker: string, today: string, speakerTe
     const s = prefixed ? prefixed[2].trim() : raw;
     const originalDue = s.match(ORIGINAL_RE)?.[1];
     const due = [...s.matchAll(DATE_RE)].map((d) => d[0]).filter((d) => d !== originalDue).at(-1);
+    const known = matchExisting(s, program);
+    if (known?.kind === "milestone") {
+      // An update to a milestone already in the tracker: change only what the sentence says.
+      const status: MilestoneStatus | undefined = /\b(done|complete[d]?|shipped|finished|live)\b/i.test(s)
+        ? "done"
+        : /\b(blocked|off track|will miss|miss(ed|ing) the date)/i.test(s)
+          ? "off_track"
+          : /\b(slip|delay|late|behind|at risk)/i.test(s)
+            ? "at_risk"
+            : /\b(on track|recovered|back on)\b/i.test(s) || due
+              ? "on_track"
+              : undefined;
+      result.milestones.push({ id: known.id, name: known.name, component, due, originalDue, status, note: raw });
+      recorded.push(`"${known.name}"${status ? ` is ${status.replace("_", " ")}` : " updated"}${due ? `, due ${due}` : ""}`);
+      continue;
+    }
+    if (known?.kind === "risk") {
+      const closed = /\b(closed|resolved|no longer|gone)\b/i.test(s);
+      const severity = /\b(high|critical)\b/i.test(s) ? "high" : /\bmedium\b/i.test(s) ? "medium" : /\blow\b/i.test(s) ? "low" : undefined;
+      result.risks.push({
+        id: known.id, description: known.name, severity, status: closed ? "closed" : undefined,
+        mitigation: /\bmitigat/i.test(s) ? s : undefined,
+      });
+      recorded.push(`the risk "${known.name}"${closed ? " as closed" : " updated"}`);
+      continue;
+    }
+    if (known?.kind === "dependency") {
+      const resolved = /\b(resolved|done|signed|received|delivered|landed|in place|complete[d]?)\b/i.test(s);
+      result.dependencies.push({ id: known.id, description: known.name, neededBy: due, status: resolved ? "resolved" : undefined });
+      recorded.push(`the dependency "${known.name}"${resolved ? " as resolved" : " updated"}`);
+      continue;
+    }
     if (/\brisk\b/i.test(s)) {
       const severity = /\b(high|critical|blocker)\b/i.test(s) ? "high" : /\blow\b/i.test(s) ? "low" : "medium";
       result.risks.push({

@@ -17,6 +17,7 @@ const DAY = 86400000;
 const STATUS_LABEL = { on_track: "on track", at_risk: "at risk", off_track: "off track", done: "done" };
 
 let programId = null;
+let current = null; // the state on screen, to show what the next update changed
 let pollTimer = null;
 let lastReportKey = "";
 
@@ -108,6 +109,7 @@ $("open-demo").addEventListener("click", () => createProgram({ demo: true }));
 
 async function openProgram(id) {
   programId = id;
+  $("changes").hidden = true;
   $("start").hidden = true;
   $("program").hidden = false;
   lastReportKey = "";
@@ -120,6 +122,7 @@ async function openProgram(id) {
 }
 
 function render(state) {
+  current = state;
   $("program-title").textContent = state.name;
   document.title = `${state.name} · Program Status Agent`;
   renderHero(state);
@@ -202,6 +205,7 @@ function renderComponents(state) {
     const ms = state.milestones.filter((m) => (m.component || GENERAL) === c.name);
     const risks = state.risks.filter((r) => r.status === "open" && (r.component || "") === c.name);
     const card = el("div", null, `comp ${c.rag}`);
+    card.dataset.key = `component:${c.name}`;
 
     const head = el("div", null, "comp-head");
     head.append(el("strong", c.name), el("span", c.rag, `pill ${c.rag}`));
@@ -292,6 +296,7 @@ function renderTimeline(state) {
     rows.push(group);
     for (const m of ms.filter((m) => (m.component || GENERAL) === c.name)) {
       const row = el("div", null, "tl-row");
+      row.dataset.key = `milestone:${m.id}`;
       const label = el("div", null, "tl-label");
       label.append(el("span", m.name, "tl-name"), el("span", m.owner || "", "muted small"));
       const track = el("div", null, "tl-track");
@@ -337,6 +342,7 @@ function renderRisks(risks) {
     col.append(head);
     for (const r of list) {
       const card = el("div", null, "risk");
+      card.dataset.key = `risk:${r.id}`;
       card.append(el("div", r.description, "risk-title"));
       card.append(el("div", [r.component, r.owner && `owner ${r.owner}`].filter(Boolean).join(" · ") || "No owner yet", "muted small"));
       card.append(el("div", r.mitigation ? `Mitigation: ${r.mitigation}` : "No mitigation yet", `small ${r.mitigation ? "" : "warn"}`));
@@ -355,6 +361,7 @@ function renderDependencies(deps, health) {
   const order = (d) => (d.status === "resolved" ? 2 : isDate(d.neededBy) ? 0 : 1);
   const rows = [...deps].sort((a, b) => order(a) - order(b) || (a.neededBy || "").localeCompare(b.neededBy || "")).map((d) => {
     const tr = el("tr");
+    tr.dataset.key = `dependency:${d.id}`;
     let state = "open";
     let tone = "";
     if (d.status === "resolved") { state = "resolved"; tone = "ok"; }
@@ -393,6 +400,7 @@ function renderMilestones(state) {
     rows.push(head);
     for (const m of state.milestones.filter((m) => (m.component || GENERAL) === c.name)) {
       const tr = el("tr");
+      tr.dataset.key = `milestone:${m.id}`;
       tr.title = m.note || "";
       const name = el("td");
       name.append(el("div", m.name), m.note ? el("div", m.note, "muted small") : "");
@@ -529,6 +537,65 @@ function renderReport(report) {
   }
 }
 
+// ---- What an update changed ----------------------------------------------------
+
+/** Compares the dashboard before and after an update, so the change is easy to see. */
+function describeChanges(before, after) {
+  const lines = [];
+  const keys = [];
+  const kinds = [["milestone", "milestones", (i) => i.name], ["risk", "risks", (i) => i.description], ["dependency", "dependencies", (i) => i.description]];
+  for (const [kind, list, label] of kinds) {
+    const old = new Map(before[list].map((i) => [i.id, i]));
+    for (const item of after[list]) {
+      const prev = old.get(item.id);
+      if (prev && prev.updatedAt === item.updatedAt) continue;
+      keys.push(`${kind}:${item.id}`);
+      if (kind === "milestone") keys.push(`component:${item.component || GENERAL}`);
+      const parts = [];
+      if (!prev) parts.push(`new ${kind}`);
+      else {
+        if (prev.status !== item.status) parts.push(`${STATUS_LABEL[prev.status] || prev.status} → ${STATUS_LABEL[item.status] || item.status}`);
+        if (kind === "milestone" && prev.due !== item.due) parts.push(`due ${shortDate(prev.due)} → ${shortDate(item.due)}`);
+        if (kind === "risk" && prev.severity !== item.severity) parts.push(`${prev.severity} → ${item.severity}`);
+        if (kind === "risk" && !prev.mitigation && item.mitigation) parts.push("mitigation added");
+        if (kind === "dependency" && prev.neededBy !== item.neededBy) parts.push(`needed by ${shortDate(item.neededBy)}`);
+        if (!parts.length) parts.push("note updated");
+      }
+      lines.push(`${label(item)}: ${parts.join(", ")}`);
+    }
+  }
+  if (before.health.overall !== after.health.overall) lines.push(`Overall health: ${before.health.overall} → ${after.health.overall}`);
+  for (const c of after.health.components) {
+    const prev = before.health.components.find((p) => p.name === c.name);
+    if (prev && prev.rag !== c.rag) lines.push(`${c.name}: ${prev.rag} → ${c.rag}`);
+    if (!prev) lines.push(`New component: ${c.name}`);
+  }
+  return { lines, keys };
+}
+
+function showChanges(author, { lines, keys }) {
+  const box = $("changes");
+  box.replaceChildren();
+  box.hidden = false;
+  box.className = `changes ${lines.length ? "" : "none"}`;
+  if (!lines.length) {
+    box.append(el("strong", `${author}'s update didn't change the tracker.`),
+      el("span", " Name the milestone, risk or dependency it's about, or answer the agent's question in the chat.", "muted"));
+    return;
+  }
+  box.append(el("strong", `Dashboard updated from ${author}'s update`));
+  const ul = el("ul");
+  for (const line of lines.slice(0, 6)) ul.append(el("li", line));
+  box.append(ul);
+  for (const key of keys) {
+    for (const node of document.querySelectorAll(`[data-key="${key.replace(/["\\]/g, "\\$&")}"]`)) {
+      node.classList.remove("flash");
+      void node.offsetWidth; // restart the animation
+      node.classList.add("flash");
+    }
+  }
+}
+
 // ---- Actions ------------------------------------------------------------------
 
 $("update-form").addEventListener("submit", async (e) => {
@@ -543,7 +610,10 @@ $("update-form").addEventListener("submit", async (e) => {
   $("send").disabled = true;
   $("send").textContent = "Thinking…";
   try {
-    render(await api(`/api/programs/${programId}/updates`, { method: "POST", body: { author: you(), text } }));
+    const before = current;
+    const after = await api(`/api/programs/${programId}/updates`, { method: "POST", body: { author: you(), text } });
+    render(after);
+    if (before) showChanges(you(), describeChanges(before, after));
     $("update-text").value = "";
   } catch (err) {
     alert(err.message);

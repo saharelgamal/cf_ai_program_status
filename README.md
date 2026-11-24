@@ -88,7 +88,8 @@ across five teams, so every part of the screen has something to show:
 - **Timeline:** every milestone's original date against its current date, with the slip in days and a today line.
 - **Risks by severity**, **dependencies** with how late or how soon each one is due, the **milestones** table,
   **recent updates** with each poster's team and assignments, and the **weekly report** for review.
-- The **status chat** stays beside the dashboard.
+- The **status chat** stays beside the dashboard. Each update redraws the dashboard at once, says what it
+  changed ("FRA rack install: at risk → done", "Overall health: RED → AMBER") and highlights those items.
 
 The demo is written straight to the tracker, so it costs no AI calls. Open it again from **All programs → Open the demo program**.
 
@@ -133,7 +134,7 @@ Open http://localhost:8787.
 
 Offline mode is a stand-in so the app can run without an AI model. It reads one update per sentence, a
 "Team - Milestone" prefix, everyday dates ("mid December", "Dec 3", "next Friday") and a short answer to its own
-last question. Its replies start with "[offline mode]". The real model on Workers AI understands far more.
+last question, and it matches an update to the milestone, risk or dependency it names ("FRA rack install is done"). Its replies start with "[offline mode]". The real model on Workers AI understands far more.
 
 ## Tests
 

@@ -42,3 +42,43 @@ describe("mockTurn understands everyday updates", () => {
     expect(answer.milestones).toEqual([{ name: "Backbone deployment", component: "Network" }]);
   });
 });
+
+describe("offline mode updates items already in the tracker", () => {
+  const program = {
+    name: "Demo",
+    milestones: [
+      { id: "fra-rack-install-24-racks", name: "FRA rack install (24 racks)", component: "DC ops", owner: "Marco", due: "2026-12-10", baselineDue: "2026-12-01", status: "at_risk", note: "", updatedAt: "" },
+      { id: "optics-delivery-120-units", name: "Optics delivery (120 units)", component: "Hardware", owner: "Lena", due: "2026-12-10", baselineDue: "2026-12-01", status: "off_track", note: "", updatedAt: "" },
+      { id: "backbone-upgrade-fra-ams", name: "Backbone upgrade FRA–AMS", component: "Network", owner: "Priya", due: "2026-12-17", baselineDue: "2026-12-10", status: "at_risk", note: "", updatedAt: "" },
+    ],
+    risks: [{ id: "optics-shortage", description: "Optics shortage could delay Q1 turn-ups", component: "Hardware", severity: "high", owner: "Lena", mitigation: "", status: "open", updatedAt: "" }],
+    dependencies: [{ id: "ams-contract", description: "AMS colocation contract signed", team: "Legal", neededBy: "2026-11-22", status: "open", updatedAt: "" }],
+  } as never;
+
+  it.each([
+    ["FRA rack install is done", "fra-rack-install-24-racks", "done", undefined],
+    ["Optics delivery is back on track", "optics-delivery-120-units", "on_track", undefined],
+    ["The backbone upgrade slipped to mid January", "backbone-upgrade-fra-ams", "at_risk", "2027-01-15"],
+  ])("%s", (text, id, status, due) => {
+    const t = mockTurn(text, "Sahar", TODAY, "", "", program);
+    expect(t.milestones).toHaveLength(1);
+    expect(t.milestones[0]).toMatchObject({ id, status, ...(due ? { due } : {}) });
+    expect(t.reply).not.toContain("Which team");
+  });
+
+  it("adds a new milestone when the subject is a different one", () => {
+    const t = mockTurn("DC ops - AMS rack install is due Dec 20", "Sahar", TODAY, "", "", program);
+    expect(t.milestones[0].id).toBeUndefined();
+    expect(t.milestones[0].name).toBe("AMS rack install is due 2026-12-20".split(" is ")[0]);
+  });
+
+  it("closes a risk and resolves a dependency", () => {
+    expect(mockTurn("The optics shortage risk is closed", "Lena", TODAY, "", "", program).risks[0]).toMatchObject({ id: "optics-shortage", status: "closed" });
+    expect(mockTurn("Legal signed the AMS colocation contract", "Aisha", TODAY, "", "", program).dependencies[0]).toMatchObject({ id: "ams-contract", status: "resolved" });
+  });
+
+  it("doesn't take a full update as the answer to the last question", () => {
+    const t = mockTurn("The backbone upgrade slipped to mid January", "Sahar", TODAY, "", 'What\'s the due date for "Something else"?', program);
+    expect(t.milestones[0].id).toBe("backbone-upgrade-fra-ams");
+  });
+});
