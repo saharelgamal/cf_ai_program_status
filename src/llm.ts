@@ -1,7 +1,7 @@
 // Everything that talks to the LLM lives here: the prompts, the Workers AI calls,
 // and a small offline mock so the app can run and be tested without Workers AI.
 
-import { daysLate, GENERAL, roster, slugify, teamOf, type Health, type MilestoneStatus, type ProgramSnapshot, type Severity } from "./status";
+import { daysLate, GENERAL, roster, slugify, teamOf, type Health, MILESTONE_STATUSES, type MilestoneStatus, type ProgramSnapshot, type Severity } from "./status";
 
 export const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
@@ -114,7 +114,10 @@ How to work:
    Name the milestone after the work, not the team.
    Put a date in "due" only when the writer gives one. If they say a milestone moved from an earlier
    date, put that earlier date in "originalDue". The tracker keeps each milestone's original plan date.
-3. Milestone status: on_track, at_risk (may slip), off_track (will miss its date or is blocked), done.
+3. Milestone status: on_track, ahead (still open but expected to finish before its original date, for example
+   "ahead of schedule" or "pulled in"), at_risk (may slip), off_track (will miss its date or is blocked), done.
+   Use done only when the writer says the work is already finished. "Will be completed", "to be done by" or a
+   future date means it is not done yet: keep it open (ahead, on_track or at_risk) and put the date in "due".
    Risk severity: high, medium, low. Close a risk or resolve a dependency only when the writer says so.
 4. A good update says what changed, the owner, the date, and for anything slipping, why and the recovery plan.
    If something important is missing, ask one or two short follow-up questions. Otherwise just confirm what you recorded.
@@ -140,7 +143,7 @@ const TURN_SCHEMA = {
           owner: STR,
           due: STR,
           originalDue: STR,
-          status: { type: "string", enum: ["on_track", "at_risk", "off_track", "done"] },
+          status: { type: "string", enum: [...MILESTONE_STATUSES] },
           note: STR,
         },
         required: ["name"],
@@ -252,7 +255,7 @@ export function sanitizeTurn(raw: unknown): TurnResult {
       return name
         ? [{ id: str(m.id, 60), name, component: str(m.component, 60), owner: str(m.owner, 80), due: date(m.due),
              originalDue: date(m.originalDue),
-             status: oneOf(m.status, ["on_track", "at_risk", "off_track", "done"] as const), note: str(m.note, 300) }]
+             status: oneOf(m.status, MILESTONE_STATUSES), note: str(m.note, 300) }]
         : [];
     }),
     risks: list(obj.risks).flatMap((r) => {
@@ -313,7 +316,7 @@ Format, plain text, under 350 words, for a VP audience, in exactly this order:
 Overall: ${health.overall}
 
 Status by component:
-One short paragraph per component, starting "<Component> (<colour>):". Say what is done, what is moving,
+One short paragraph per component, starting "<Component> (<colour>):". Say what is done, what is ahead of plan, what is moving,
 what slipped against its original date and why, and the recovery plan if the updates give one.
 
 Overall against the original plan:
@@ -380,6 +383,35 @@ function monthDate(month: string, day: number | "last", year: string | undefined
 const PART_DAY: Record<string, number | "last"> = {
   "beginning of": 1, "start of": 1, early: 7, mid: 15, "middle of": 15, late: 25, "end of": "last",
 };
+
+const STATUS_WORDS: Record<MilestoneStatus, string> = {
+  on_track: "on track", ahead: "ahead of schedule", at_risk: "at risk", off_track: "off track", done: "done",
+};
+
+// "will be completed", "to be done by", "expected to finish", "should go live": future, so not done yet.
+const FUTURE_DONE_RE =
+  /\b(?:will|to|should|would|could|expected|scheduled|planned|going|aim(?:ing)?)\s+(?:be\s+|go\s+|get\s+)?(?:\w+\s+)?(?:done|complete[ds]?|finish(?:es|ed)?|shipped|live)\b/gi;
+
+// "not done", "isn't finished yet", "no longer complete": a correction, so not done.
+const NOT_DONE_RE =
+  /\b(?:not|isn't|wasn't|aren't|never|no longer)\s+(?:yet\s+|actually\s+|really\s+)?(?:done|complete[d]?|finished|shipped|live)\b/gi;
+
+// "marked done by mistake", "wrongly marked complete": also a correction.
+const MISMARKED_RE =
+  /\b(?:(?:wrongly|incorrectly|mistakenly)\s+marked\s+(?:as\s+)?(?:done|complete[d]?)|marked\s+(?:as\s+)?(?:done|complete[d]?)\s+(?:by mistake|in error|wrongly|incorrectly))/gi;
+
+/** The status a sentence states, if any. Done only when the work is already finished. */
+export function statusFrom(sentence: string): MilestoneStatus | undefined {
+  const s = sentence.replace(FUTURE_DONE_RE, " ").replace(NOT_DONE_RE, " ").replace(MISMARKED_RE, " ");
+  if (/\b(done|complete[d]?|shipped|finished|is live|went live|now live)\b/i.test(s)) return "done";
+  if (/\b(blocked|off track|will miss|miss(ed|ing) the date)/i.test(s)) return "off_track";
+  if (/\b(slip|delay|late\b|behind|at risk)/i.test(s)) return "at_risk";
+  if (/\b(ahead|early|pulled in|earlier than (planned|plan))\b/i.test(s)) return "ahead";
+  if (/\b(on track|recovered|back on)\b/i.test(s)) return "on_track";
+  if (s !== sentence.replace(FUTURE_DONE_RE, " ") || /\breopen/i.test(s)) return "on_track"; // "not done" alone reopens it
+  return undefined;
+}
+
 
 /**
  * Offline mode only: turns everyday dates into YYYY-MM-DD, using today's date for the year.
@@ -517,17 +549,12 @@ export function mockTurn(
     const known = matchExisting(s, program);
     if (known?.kind === "milestone") {
       // An update to a milestone already in the tracker: change only what the sentence says.
-      const status: MilestoneStatus | undefined = /\b(done|complete[d]?|shipped|finished|live)\b/i.test(s)
-        ? "done"
-        : /\b(blocked|off track|will miss|miss(ed|ing) the date)/i.test(s)
-          ? "off_track"
-          : /\b(slip|delay|late|behind|at risk)/i.test(s)
-            ? "at_risk"
-            : /\b(on track|recovered|back on)\b/i.test(s) || due
-              ? "on_track"
-              : undefined;
+      let status = statusFrom(s);
+      // A new date earlier than the original plan, with no other status word, means it's ahead.
+      const baseline = program?.milestones.find((m) => m.id === known.id)?.baselineDue;
+      if (!status && due) status = baseline && due < baseline ? "ahead" : "on_track";
       result.milestones.push({ id: known.id, name: known.name, component, due, originalDue, status, note: raw });
-      recorded.push(`"${known.name}"${status ? ` is ${status.replace("_", " ")}` : " updated"}${due ? `, due ${due}` : ""}`);
+      recorded.push(`"${known.name}"${status ? ` is ${STATUS_WORDS[status]}` : " updated"}${due ? `, due ${due}` : ""}`);
       continue;
     }
     if (known?.kind === "risk") {
@@ -562,16 +589,10 @@ export function mockTurn(
       recorded.push(due ? `a dependency needed by ${due}` : "a dependency");
       if (!due) questions.push("When do you need that dependency by?");
     } else {
-      const status: MilestoneStatus = /\b(done|complete[d]?|shipped|finished)\b/i.test(s)
-        ? "done"
-        : /\b(blocked|off track|will miss|miss(ed|ing) the date)/i.test(s)
-          ? "off_track"
-          : /\b(slip|delay|late|behind|at risk)/i.test(s)
-            ? "at_risk"
-            : "on_track";
+      const status: MilestoneStatus = statusFrom(s) ?? (due && originalDue && due < originalDue ? "ahead" : "on_track");
       const name = milestoneName(s);
       result.milestones.push({ name, component, owner: speaker, due, originalDue, status, note: raw });
-      recorded.push(`"${name}" (${status.replace("_", " ")}${due ? `, due ${due}` : ""})`);
+      recorded.push(`"${name}" (${STATUS_WORDS[status]}${due ? `, due ${due}` : ""})`);
       if (status !== "done" && !due) questions.push(`What's the due date for "${name}"?`);
       if (!component && !speakerTeam) questions.push(`Which team or component is "${name}" part of?`);
     }

@@ -19,6 +19,10 @@ describe("computeHealth", () => {
     expect(h.stale).toEqual([]);
   });
 
+  it("is GREEN for a milestone ahead of schedule", () => {
+    expect(computeHealth(program({ milestones: [ms({ status: "ahead" })] }), NOW).overall).toBe("GREEN");
+  });
+
   it("is AMBER for an at-risk milestone", () => {
     expect(computeHealth(program({ milestones: [ms({ status: "at_risk" })] }), NOW).overall).toBe("AMBER");
   });

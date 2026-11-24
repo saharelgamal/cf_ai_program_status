@@ -92,6 +92,9 @@ across five teams, so every part of the screen has something to show:
   **recent updates** with each poster's team and assignments, and the **weekly report** for review.
 - The **status chat** stays beside the dashboard. Each update redraws the dashboard at once, says what it
   changed ("FRA rack install: at risk → done", "Overall health: RED → AMBER") and highlights those items.
+- **Milestone status:** on track, ahead of schedule, at risk, off track or done. A milestone is marked done only
+  when the update says the work is finished: "will be completed Dec 4" keeps it open with the new date, and
+  "it's not done" reopens it.
 
 The demo is written straight to the tracker, so it costs no AI calls. Open it again from **All programs → Open the demo program**.
 

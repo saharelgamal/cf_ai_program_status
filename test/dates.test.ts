@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mockTurn, normalizeDates } from "../src/llm";
+import { mockTurn, normalizeDates, statusFrom } from "../src/llm";
 
 const TODAY = "2026-11-21"; // a Saturday
 
@@ -59,6 +59,11 @@ describe("offline mode updates items already in the tracker", () => {
     ["FRA rack install is done", "fra-rack-install-24-racks", "done", undefined],
     ["Optics delivery is back on track", "optics-delivery-120-units", "on_track", undefined],
     ["The backbone upgrade slipped to mid January", "backbone-upgrade-fra-ams", "at_risk", "2027-01-15"],
+    // Sahar's report: "will be completed" is a future date, not done.
+    ["Network - backbone upgrade is ahead of schedule and will be completed 2026-12-04", "backbone-upgrade-fra-ams", "ahead", "2026-12-04"],
+    ["Backbone upgrade will be done by Dec 4", "backbone-upgrade-fra-ams", "ahead", "2026-12-04"],
+    ["Backbone upgrade is expected to finish Dec 12", "backbone-upgrade-fra-ams", "on_track", "2026-12-12"],
+    ["Backbone upgrade is completed", "backbone-upgrade-fra-ams", "done", undefined],
   ])("%s", (text, id, status, due) => {
     const t = mockTurn(text, "Sahar", TODAY, "", "", program);
     expect(t.milestones).toHaveLength(1);
@@ -80,5 +85,25 @@ describe("offline mode updates items already in the tracker", () => {
   it("doesn't take a full update as the answer to the last question", () => {
     const t = mockTurn("The backbone upgrade slipped to mid January", "Sahar", TODAY, "", 'What\'s the due date for "Something else"?', program);
     expect(t.milestones[0].id).toBe("backbone-upgrade-fra-ams");
+  });
+});
+
+describe("statusFrom (offline mode)", () => {
+  it.each([
+    ["is ahead of schedule and will be completed 2026-12-04", "ahead"],
+    ["will be completed next week", undefined],
+    ["is to be done by Friday", undefined],
+    ["should go live on 2026-12-01", undefined],
+    ["went live yesterday", "done"],
+    ["is done, two days early", "done"],
+    ["pulled in by a week", "ahead"],
+    ["will slip a week", "at_risk"],
+    ["is blocked on optics", "off_track"],
+    ["is not done, it is ahead of schedule", "ahead"],
+    ["isn't finished yet", "on_track"],
+    ["was marked done by mistake, reopen it", "on_track"],
+    ["was wrongly marked complete; it is ahead", "ahead"],
+  ])("%s → %s", (text, status) => {
+    expect(statusFrom(text)).toBe(status);
   });
 });

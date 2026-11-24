@@ -14,7 +14,7 @@ const store = {
 
 const GENERAL = "General";
 const DAY = 86400000;
-const STATUS_LABEL = { on_track: "on track", at_risk: "at risk", off_track: "off track", done: "done" };
+const STATUS_LABEL = { on_track: "on track", ahead: "ahead of schedule", at_risk: "at risk", off_track: "off track", done: "done" };
 
 let programId = null;
 let current = null; // the state on screen, to show what the next update changed
@@ -354,7 +354,7 @@ function renderKpis(state) {
   const plan = state.health.plan;
 
   $("kpis").replaceChildren(
-    tile("milestones", "Milestones", ms.length, `${count("done")} done · ${count("on_track")} on track`),
+    tile("milestones", "Milestones", ms.length, `${count("done")} done · ${count("on_track")} on track${count("ahead") ? ` · ${count("ahead")} ahead` : ""}`),
     tile("at_risk", "At risk", count("at_risk"), "may slip", count("at_risk") ? "AMBER" : ""),
     tile("off_track", "Off track", count("off_track"), "will miss or blocked", count("off_track") ? "RED" : ""),
     tile("risks", "Open risks", open.length, `${sev("high")} high · ${sev("medium")} medium · ${sev("low")} low`, sev("high") ? "RED" : sev("medium") ? "AMBER" : ""),
@@ -383,7 +383,7 @@ function renderComponents(state) {
 
     if (ms.length) {
       const bar = el("div", null, "progress");
-      for (const s of ["done", "on_track", "at_risk", "off_track"]) {
+      for (const s of ["done", "ahead", "on_track", "at_risk", "off_track"]) {
         const n = ms.filter((m) => m.status === s).length;
         if (!n) continue;
         const seg = el("span", null, `seg ${s}`);

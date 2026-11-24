@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { idFor, mockTurn, sanitizeTurn } from "../src/llm";
 
 describe("sanitizeTurn (model output is never trusted as-is)", () => {
+  it("keeps the ahead status", () => {
+    const t = sanitizeTurn({ reply: "ok", milestones: [{ name: "Backbone upgrade", status: "ahead", due: "2026-12-04" }] });
+    expect(t.milestones[0].status).toBe("ahead");
+  });
+
   it("keeps valid fields and drops bad values", () => {
     const t = sanitizeTurn({
       reply: "Got it.",

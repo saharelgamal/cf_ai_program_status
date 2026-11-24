@@ -45,6 +45,10 @@ After the first version was on GitHub, I tried it and asked for changes:
 
 (With a screenshot of the eight key-number tiles.)
 
+> teh network update being ahead of schedule is marked as DONE instead of AHEAD OF SCHEDULE - i need this corrected
+
+(With a screenshot of the milestone table.)
+
 ## 2. Task brief given to the coding assistant
 
 From the job posting's optional assignment:

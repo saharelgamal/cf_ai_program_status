@@ -1,7 +1,9 @@
 // Program data types and the rule-based health check.
 // Pure TypeScript with no Cloudflare imports, so it is easy to unit test.
 
-export type MilestoneStatus = "on_track" | "at_risk" | "off_track" | "done";
+/** "ahead" means still open and expected to finish before its original date: green, like on_track. */
+export type MilestoneStatus = "on_track" | "ahead" | "at_risk" | "off_track" | "done";
+export const MILESTONE_STATUSES = ["on_track", "ahead", "at_risk", "off_track", "done"] as const;
 export type Severity = "high" | "medium" | "low";
 
 export interface Milestone {
