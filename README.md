@@ -75,9 +75,26 @@ a human in the loop on the one thing that leaves the team: the report leadership
   names no team is filed under the poster's team.
 - **Stale-update detection.** Open items nobody has updated for 7 days are listed under "Needs an update", the usual TPM chase list.
 
+## The dashboard
+
+The first visit opens a **demo program** already filled with a week of sample updates from seven people
+across five teams, so every part of the screen has something to show:
+
+- **Overall health** with the rules' reasons, and buttons to draft the weekly report or schedule it.
+- **Key numbers:** milestones by status, open risks by severity, overdue items, end date against the plan,
+  items with no update for a week, and how many updates came in this week from how many people.
+- **Component cards:** each team's own red, amber or green, a progress bar by status, slips, open risks,
+  the next milestone and who works there.
+- **Timeline:** every milestone's original date against its current date, with the slip in days and a today line.
+- **Risks by severity**, **dependencies** with how late or how soon each one is due, the **milestones** table,
+  **recent updates** with each poster's team and assignments, and the **weekly report** for review.
+- The **status chat** stays beside the dashboard.
+
+The demo is written straight to the tracker, so it costs no AI calls. Open it again from **All programs → Open the demo program**.
+
 ## Try it
 
-1. Create a program (for example "EU edge capacity expansion").
+1. Look around the demo, then create your own program (for example "EU edge capacity expansion").
 2. Type your name in **Posting as** and post updates. Every update, and every tracker item it changes, records who posted it. For example:
    Name the team or component with each milestone, and say the original date when one moves:
    - `Network - Canary rollout is done in 3 PoPs. DC ops - FRA rack install is due 2026-12-15.`
@@ -131,7 +148,7 @@ bash scripts/smoke.sh     # end to end: updates → health → Workflow draft �
 
 | Method | Path | Does |
 | --- | --- | --- |
-| POST | `/api/programs` | Create a program `{ name }` |
+| POST | `/api/programs` | Create a program `{ name }`, or the demo program `{ demo: true }` |
 | GET | `/api/programs/:id` | Chat, tracker, health and recent reports |
 | POST | `/api/programs/:id/updates` | Post a status update `{ author, text }` |
 | POST | `/api/programs/:id/reports` | Draft this week's report (starts the Workflow) |
@@ -145,8 +162,9 @@ src/index.ts      Worker: routes the API, serves the UI
 src/program.ts    Durable Object: state in SQLite, chat turns, scheduling
 src/workflow.ts   Workflow: draft, wait for approval, record
 src/llm.ts        Prompts, Workers AI calls, output validation, offline mock
+src/demo.ts       The demo program shown on the first visit
 src/status.ts     Data types, the health rules per program and per component, and the plan comparison (unit tested)
-public/           Chat UI
+public/           Dashboard and chat UI (plain HTML, CSS and JavaScript)
 test/             Unit tests (Vitest)
 scripts/smoke.sh  End-to-end test against a running server
 PROMPTS.md        AI prompts used to build this project

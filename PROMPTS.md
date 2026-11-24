@@ -37,6 +37,8 @@ After the first version was on GitHub, I tried it and asked for changes:
 
 (With a screenshot of offline mode asking for the due date again after "mid december".)
 
+> how can we make a better version ? it looks dull and doesnt give a lot of information
+
 ## 2. Task brief given to the coding assistant
 
 From the job posting's optional assignment:
@@ -77,6 +79,9 @@ These were the assistant's proposals, kept in the final code:
   component, then the overall position against the original plan.
 - A status updates table beside the chat shows each update's poster, team and assignments, worked out from the
   tracker rather than typed in. An update that names no team is filed under the poster's team.
+- The screen became a program dashboard: overall health and its reasons, key numbers, a card per component,
+  a timeline of original against current dates, risks by severity, dependencies, recent updates and the report,
+  with the chat beside it. A demo program, seeded without calling the LLM, fills it on the first visit.
 
 ## 4. Prompts the app sends to the LLM at runtime
 

@@ -5,6 +5,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { computeHealth, nextMondayMorning, GENERAL, roster, teamOf, type Dependency, type Person, type Health, type Milestone, type ProgramSnapshot, type Risk } from "./status";
+import { demoProgram } from "./demo";
 import { idFor, runTurn, type ChatMessage, type MilestoneChange, type TurnResult } from "./llm";
 
 export type ReportStatus = "drafting" | "awaiting_approval" | "approved" | "changes_requested" | "expired" | "failed";
@@ -189,6 +190,31 @@ export class ProgramRoom extends DurableObject<Env> {
         `Tracking "${name}". Send me status updates in plain words: what moved, what's slipping and why, ` +
           `new risks, and what you're waiting on from other teams. I'll keep the tracker current and draft the weekly report.`,
       );
+    }
+    return this.getState();
+  }
+
+  /** Creates the demo program: a full tracker and a week of sample updates, without calling the LLM. */
+  async createDemo(id: string): Promise<ProgramState> {
+    if (!this.getMeta("name")) {
+      const demo = demoProgram();
+      this.setMeta("id", id);
+      this.setMeta("name", demo.name);
+      this.setMeta("createdAt", new Date().toISOString());
+      this.setMeta("demo", "true");
+      const items: Array<[ItemKind, { id: string }[]]> = [
+        ["milestone", demo.milestones],
+        ["risk", demo.risks],
+        ["dependency", demo.dependencies],
+      ];
+      for (const [kind, list] of items) {
+        for (const item of list) {
+          this.sql.exec("INSERT OR REPLACE INTO items (kind, id, data) VALUES (?, ?, ?)", kind, item.id, JSON.stringify(item));
+        }
+      }
+      for (const msg of demo.messages) {
+        this.sql.exec("INSERT INTO messages (role, author, content, at) VALUES (?, ?, ?, ?)", msg.role, msg.author, msg.content, msg.at);
+      }
     }
     return this.getState();
   }

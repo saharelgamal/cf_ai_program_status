@@ -29,10 +29,12 @@ export default {
     try {
       // Create a program.
       if (method === "POST" && path === "/api/programs") {
-        const { name } = await body<{ name: string }>(request);
-        if (!name?.trim()) return json({ error: "Give the program a name." }, 400);
+        const { name, demo } = await body<{ name: string; demo: boolean }>(request);
         const id = crypto.randomUUID();
         const program = env.PROGRAM.get(env.PROGRAM.idFromName(id));
+        // { demo: true } creates a program already filled with sample data.
+        if (demo === true) return json(await program.createDemo(id), 201);
+        if (!name?.trim()) return json({ error: "Give the program a name." }, 400);
         return json(await program.create(id, name.trim()), 201);
       }
 

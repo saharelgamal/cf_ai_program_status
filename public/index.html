@@ -7,86 +7,125 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header>
-    <h1><a href="/">Program Status Agent</a></h1>
+  <header class="topbar">
+    <a class="brand" href="#"><span class="logo" aria-hidden="true">◆</span> Program Status Agent</a>
+    <nav><a href="#" id="all-programs">All programs</a></nav>
   </header>
 
-  <!-- Start screen: create a program or open a recent one -->
+  <!-- Start screen: create a program, open the demo, or open a recent one -->
   <main id="start" hidden>
     <section class="card narrow">
       <h2>Track a program</h2>
       <p class="muted">Team members post status updates in chat. The agent keeps the tracker current, asks follow-up
-        questions when an update is vague, and drafts a weekly executive report that a person approves.</p>
-      <form id="create-form">
+        questions when an update is vague, scores health with fixed rules, and drafts a weekly executive report that a
+        person approves.</p>
+      <form id="create-form" class="inline-form">
         <input id="program-name" placeholder="Program name, e.g. EU edge capacity expansion" maxlength="120" required />
         <button type="submit">Start tracking</button>
       </form>
+      <p><button type="button" id="open-demo" class="secondary">Open the demo program</button>
+        <span class="muted small">A program already filled with a week of sample updates.</span></p>
       <h3>Recent programs</h3>
       <ul id="recent" class="plain"></ul>
     </section>
   </main>
 
-  <!-- Program screen -->
-  <main id="program" class="grid" hidden>
-    <div class="left">
-    <section class="card chat">
-      <h2 id="program-title"></h2>
+  <!-- Program screen: dashboard on the left, chat on the right -->
+  <main id="program" class="layout" hidden>
+    <div class="dash">
+      <section class="card hero">
+        <div class="hero-health">
+          <div class="eyebrow">Overall health</div>
+          <div id="rag" class="rag-big"></div>
+          <div id="as-of" class="muted small"></div>
+        </div>
+        <div class="hero-main">
+          <h2 id="program-title"></h2>
+          <div class="eyebrow">Why this colour</div>
+          <ul id="reasons" class="reasons"></ul>
+        </div>
+        <div class="hero-actions">
+          <button id="draft-report">Draft weekly report</button>
+          <label class="small"><input type="checkbox" id="schedule" /> Every Monday 9 AM</label>
+          <p id="schedule-note" class="muted small"></p>
+        </div>
+      </section>
+
+      <section id="kpis" class="kpis" aria-label="Key numbers"></section>
+
+      <section class="card">
+        <div class="card-head"><h3>Components</h3><span class="muted small">Each team scored with the same rules as the program</span></div>
+        <div id="components" class="comp-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h3>Timeline: original plan vs current dates</h3>
+          <span class="legend small">
+            <span><i class="mk base"></i> original date</span>
+            <span><i class="mk cur on_track"></i> current date</span>
+            <span><i class="bar late"></i> slip</span>
+            <span><i class="today-mark"></i> today</span>
+          </span>
+        </div>
+        <p id="plan" class="plan-line"></p>
+        <div id="timeline" class="timeline"></div>
+      </section>
+
+      <div class="two">
+        <section class="card">
+          <div class="card-head"><h3>Risks by severity</h3><span id="closed-risks" class="muted small"></span></div>
+          <div id="risks" class="risk-cols"></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h3>Dependencies</h3></div>
+          <table><thead><tr><th>Needed from</th><th>What</th><th>Needed by</th><th>State</th></tr></thead>
+            <tbody id="dependencies"></tbody></table>
+          <div id="stale-box">
+            <h4>Needs an update <span class="muted">(nothing posted for 7 days)</span></h4>
+            <ul id="stale" class="plain small"></ul>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-head"><h3>Milestones</h3></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due (vs plan)</th><th>Status</th><th>Last update</th></tr></thead>
+            <tbody id="milestones"></tbody></table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Recent updates</h3>
+          <span class="muted small">Team and assignments fill in from the tracker</span></div>
+        <div class="table-wrap">
+          <table class="updates"><thead><tr><th>When</th><th>Name</th><th>Team</th><th>Assigned to</th><th>Update</th></tr></thead>
+            <tbody id="updates"></tbody></table>
+        </div>
+      </section>
+
+      <section class="card" id="report-card">
+        <div class="card-head"><h3>Weekly report</h3></div>
+        <div id="report"></div>
+      </section>
+    </div>
+
+    <aside class="card chat">
+      <div class="card-head"><h3>Status chat</h3><span class="muted small">Post updates in plain words</span></div>
       <div id="messages" aria-live="polite"></div>
       <form id="update-form" class="update-form">
         <label class="posting-as">Posting as
           <input id="you" placeholder="Your name, e.g. Priya" maxlength="60" required />
         </label>
+        <textarea id="update-text" rows="3" maxlength="2000"
+          placeholder="e.g. &quot;DC ops - FRA rack install slips to Jan 20, originally Dec 15, because of a vendor delay.&quot;"></textarea>
         <div class="send-row">
-          <textarea id="update-text" rows="3" maxlength="2000"
-            placeholder="Your status update, e.g. &quot;DC ops - FRA rack install slips to 2026-12-12, originally 2026-12-01, because of a vendor delay.&quot;"></textarea>
+          <span class="muted small">Ctrl or ⌘ + Enter to send</span>
           <button type="submit" id="send">Send update</button>
         </div>
       </form>
-    </section>
-
-    <section class="card">
-      <h3>Status updates</h3>
-      <p class="muted small">Team and assignments fill in automatically from the tracker: a person's team is the
-        component of the work they own, and "Assigned to" lists their open milestones and risks.</p>
-      <table class="updates"><thead><tr><th>When</th><th>Name</th><th>Team</th><th>Assigned to</th><th>Update</th></tr></thead>
-        <tbody id="updates"></tbody></table>
-    </section>
-    </div>
-
-    <section class="side">
-      <div class="card">
-        <h3>Health <span id="rag" class="rag"></span></h3>
-        <ul id="reasons" class="plain small"></ul>
-        <h4>By component</h4>
-        <ul id="components" class="plain small"></ul>
-        <h4>Against the original plan</h4>
-        <p id="plan" class="small"></p>
-        <div id="stale-box" hidden>
-          <h4>Needs an update</h4>
-          <ul id="stale" class="plain small"></ul>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Milestones</h3>
-        <table><thead><tr><th>Milestone</th><th>Owner</th><th>Due (vs plan)</th><th>Status</th><th>Last update</th></tr></thead>
-          <tbody id="milestones"></tbody></table>
-        <h3>Risks</h3>
-        <ul id="risks" class="plain small"></ul>
-        <h3>Dependencies</h3>
-        <ul id="dependencies" class="plain small"></ul>
-      </div>
-
-      <div class="card">
-        <h3>Weekly report</h3>
-        <div class="row">
-          <button id="draft-report">Draft report now</button>
-          <label class="small"><input type="checkbox" id="schedule" /> Every Monday 9 AM</label>
-        </div>
-        <p id="schedule-note" class="muted small"></p>
-        <div id="report"></div>
-      </div>
-    </section>
+    </aside>
   </main>
 
   <script src="/app.js"></script>
